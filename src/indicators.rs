@@ -2,8 +2,6 @@ use pyo3::prelude::*;
 use numpy::{PyArray1, PyReadonlyArray1};
 use crate::backend::IndicatorsBackend;
 use crate::backend_cpu::CpuBackend;
-#[cfg(feature = "gpu")]
-use crate::backend_gpu::GpuBackend;
 
 #[pyclass]
 pub struct RustTA {
@@ -16,20 +14,6 @@ impl RustTA {
         let forced = std::env::var("RUST_INDICATORS_DEVICE").ok();
         if forced.as_deref() == Some("cpu") {
             return (Box::new(CpuBackend::new()), "cpu");
-        }
-        #[cfg(feature = "gpu")]
-        {
-            if forced.as_deref() == Some("gpu") {
-                match GpuBackend::try_new() {
-                    Ok(g) => return (Box::new(g), "gpu"),
-                    Err(e) => {
-                        eprintln!("[rust_indicators] GPU requested but unavailable: {e}. Falling back to CPU.");
-                        return (Box::new(CpuBackend::new()), "cpu");
-                    }
-                }
-            }
-            if let Ok(g) = GpuBackend::try_new() { return (Box::new(g), "gpu"); }
-            else { eprintln!("[rust_indicators] No usable GPU; using CPU."); }
         }
         (Box::new(CpuBackend::new()), "cpu")
     }

@@ -13,14 +13,11 @@ static GLOBAL: MiMalloc = MiMalloc;
 /// Provides 10-100x performance improvement over Python equivalents
 pub mod backend;
 pub mod backend_cpu;
-#[cfg(feature = "gpu")]
-pub mod backend_gpu;
 pub mod cpu_impls;
-#[cfg(feature = "gpu")]
-pub mod vpin_kernel;
 pub mod indicators;
 pub mod features;
 pub mod ml_model;
+
 
 // Re-export the main structs for Python bindings
 pub use indicators::RustTA;

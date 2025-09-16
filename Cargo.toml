@@ -15,9 +15,8 @@ numpy = "0.25"
 yata = "0.6"  # Yet Another Technical Analysis
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1"
+rand = "0.8"  # For random data generation in tests
 
-# Optional GPU stack (WebGPU via cubecl)
-cubecl = { version = "0.2", features = ["wgpu"], optional = true }
 
 # Memory allocator for better performance - marked as optional
 mimalloc = { version = "0.1", default-features = false, optional = true }
@@ -31,7 +30,6 @@ strip = true         # Remove debug symbols
 
 [features]
 default = ["mimalloc"]
-gpu = ["dep:cubecl"]
 
 # For development with better error messages
 [profile.dev]
