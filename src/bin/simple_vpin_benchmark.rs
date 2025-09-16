@@ -1,9 +1,9 @@
 #[cfg(feature = "cuda")]
-use rust_indicators::cpu_impls::vpin_cpu_kernel;
+use rust_indicators::backends::cpu::implementations::vpin_cpu_kernel;
 #[cfg(feature = "cuda")]
-use rust_indicators::test_utils::*;
+use rust_indicators::utils::testing::*;
 #[cfg(feature = "cuda")]
-use rust_indicators::gpu_impls::vpin_cuda_compute;
+use rust_indicators::backends::gpu::implementations::vpin_cuda_compute;
 
 #[cfg(feature = "cuda")]
 fn benchmark_cuda(buy_volumes: &[f64], sell_volumes: &[f64], window: usize, iterations: usize) -> Result<(f64, Vec<f64>), String> {

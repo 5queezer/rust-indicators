@@ -110,7 +110,7 @@ pub fn vpin_cuda_compute(
     window: usize,
 ) -> Vec<f64> {
     // Fallback to CPU when CUDA feature is not enabled
-    crate::cpu_impls::vpin_cpu_kernel(buy_volumes, sell_volumes, window)
+    crate::backends::cpu::implementations::vpin_cpu_kernel(buy_volumes, sell_volumes, window)
 }
 
 #[cfg(not(feature = "gpu"))]
@@ -121,5 +121,5 @@ pub fn vpin_gpu_compute<R>(
     window: usize,
 ) -> Vec<f64> {
     // Fallback to CPU when GPU feature is not enabled
-    crate::cpu_impls::vpin_cpu_kernel(buy_volumes, sell_volumes, window)
+    crate::backends::cpu::implementations::vpin_cpu_kernel(buy_volumes, sell_volumes, window)
 }

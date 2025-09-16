@@ -1,5 +1,5 @@
 mod no_gpu_tests {
-    use rust_indicators::cpu_impls::vpin_cpu_kernel;
+    use rust_indicators::backends::cpu::implementations::vpin_cpu_kernel;
     use rand::Rng;
     use rstest::{rstest, fixture};
 

@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 use numpy::{PyArray1, PyReadonlyArray1};
-use crate::backend::IndicatorsBackend;
-use crate::backend_cpu::CpuBackend;
-use crate::backend_gpu::PartialGpuBackend;
+use crate::core::traits::IndicatorsBackend;
+use crate::backends::cpu::CpuBackend;
+use crate::backends::gpu::PartialGpuBackend;
 
 #[pyclass]
 pub struct RustTA {

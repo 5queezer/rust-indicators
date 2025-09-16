@@ -4,7 +4,7 @@ use rstest::{rstest, fixture};
 #[cfg(test)]
 mod backend_selection_tests {
     use super::*;
-    use rust_indicators::backend_gpu::PartialGpuBackend;
+    use rust_indicators::backends::gpu::backend::PartialGpuBackend;
 
     // Shared fixtures for backend testing
     #[fixture]

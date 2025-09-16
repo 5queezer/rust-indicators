@@ -4,7 +4,7 @@
 //! PartialGpuBackend availability checks that RustTA uses internally.
 
 use std::env;
-use rust_indicators::backend_gpu::PartialGpuBackend;
+use rust_indicators::backends::gpu::PartialGpuBackend;
 
 fn test_backend_selection_logic(device_env: Option<&str>, cuda_env: Option<&str>) -> (&'static str, String) {
     // Set up environment

@@ -11,22 +11,17 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 /// Rust-powered technical analysis indicators for FreqTrade
 /// Provides 10-100x performance improvement over Python equivalents
-pub mod backend;
-pub mod backend_cpu;
-pub mod backend_gpu;
-pub mod cpu_impls;
-#[cfg(feature = "gpu")]
-pub mod gpu_impls;
+pub mod core;
+pub mod backends;
 pub mod indicators;
 pub mod features;
-pub mod ml_model;
-pub mod test_utils;
-
+pub mod ml;
+pub mod utils;
 
 // Re-export the main structs for Python bindings
 pub use indicators::RustTA;
 pub use features::RustFeatures;
-pub use ml_model::RustMLModel;
+pub use ml::RustMLModel;
 
 /// Python module definition
 #[pymodule]

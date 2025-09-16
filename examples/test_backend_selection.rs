@@ -30,12 +30,12 @@ fn main() {
     
     // Test GPU availability check
     println!("GPU Availability Check:");
-    let gpu_available = rust_indicators::backend_gpu::PartialGpuBackend::is_available();
+    let gpu_available = rust_indicators::backends::gpu::PartialGpuBackend::is_available();
     println!("  PartialGpuBackend::is_available() = {}", gpu_available);
     
     // Test GPU backend creation
     println!("\nGPU Backend Creation:");
-    match rust_indicators::backend_gpu::PartialGpuBackend::new() {
+    match rust_indicators::backends::gpu::PartialGpuBackend::new() {
         Ok(_) => println!("  PartialGpuBackend::new() = Ok (GPU backend created successfully)"),
         Err(e) => println!("  PartialGpuBackend::new() = Err ({})", e),
     }
@@ -45,7 +45,7 @@ fn main() {
     let selected_backend = match env::var("RUST_INDICATORS_DEVICE").as_deref() {
         Ok("gpu") => {
             println!("  Environment requests GPU backend");
-            match rust_indicators::backend_gpu::PartialGpuBackend::new() {
+            match rust_indicators::backends::gpu::PartialGpuBackend::new() {
                 Ok(_) => {
                     println!("  GPU backend creation successful");
                     "gpu"
