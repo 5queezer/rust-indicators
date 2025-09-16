@@ -25,6 +25,9 @@ cubecl-cuda = { version = "0.2", optional = true }
 # Memory allocator for better performance - marked as optional
 mimalloc = { version = "0.1", default-features = false, optional = true }
 
+[dev-dependencies]
+rstest = "0.18"
+
 # Performance optimizations
 [profile.release]
 lto = true           # Link-time optimization

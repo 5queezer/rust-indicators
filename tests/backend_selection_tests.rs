@@ -1,9 +1,22 @@
 use std::env;
+use rstest::{rstest, fixture};
 
 #[cfg(test)]
 mod backend_selection_tests {
     use super::*;
     use rust_indicators::backend_gpu::PartialGpuBackend;
+
+    // Shared fixtures for backend testing
+    #[fixture]
+    fn clean_environment() {
+        env::remove_var("RUST_INDICATORS_DEVICE");
+        env::remove_var("CUDA_VISIBLE_DEVICES");
+    }
+
+    #[fixture]
+    fn gpu_available_environment() {
+        env::set_var("CUDA_VISIBLE_DEVICES", "0");
+    }
 
     #[test]
     fn test_gpu_backend_availability_check() {
@@ -50,31 +63,27 @@ mod backend_selection_tests {
         env::remove_var("CUDA_VISIBLE_DEVICES");
     }
 
-    #[test]
-    fn test_environment_variable_parsing() {
-        // Test various environment variable values
-        let test_cases = vec![
-            ("gpu", true),
-            ("GPU", false), // Case sensitive
-            ("cpu", false),
-            ("invalid", false),
-            ("", false),
-        ];
-
-        for (env_value, should_request_gpu) in test_cases {
-            env::set_var("RUST_INDICATORS_DEVICE", env_value);
-            
-            let env_result = env::var("RUST_INDICATORS_DEVICE");
-            let requests_gpu = matches!(env_result.as_deref(), Ok("gpu"));
-            
-            assert_eq!(requests_gpu, should_request_gpu,
-                "Environment variable '{}' should {} request GPU",
-                env_value, if should_request_gpu { "" } else { "not" });
-        }
+    #[rstest]
+    #[case::gpu_lowercase("gpu", true)]
+    #[case::gpu_uppercase("GPU", false)] // Case sensitive
+    #[case::cpu("cpu", false)]
+    #[case::invalid("invalid", false)]
+    #[case::empty("", false)]
+    fn test_environment_variable_parsing(
+        #[case] env_value: &str,
+        #[case] should_request_gpu: bool,
+    ) {
+        env::set_var("RUST_INDICATORS_DEVICE", env_value);
         
-        // Clean up
+        let env_result = env::var("RUST_INDICATORS_DEVICE");
+        let requests_gpu = matches!(env_result.as_deref(), Ok("gpu"));
+        
+        assert_eq!(requests_gpu, should_request_gpu,
+            "Environment variable '{}' should {} request GPU",
+            env_value, if should_request_gpu { "" } else { "not" });
+        
+        // Clean up after each test case
         env::remove_var("RUST_INDICATORS_DEVICE");
-        println!("✓ Environment variable parsing: All cases handled correctly");
     }
 
     #[test]
