@@ -107,4 +107,15 @@ impl RustTA {
     ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.cci(py, high, low, close, period)
     }
+
+    /// Volume-synchronized Probability of Informed Trading (VPIN)
+    fn vpin(
+        &self,
+        py: Python,
+        buy_volumes: PyReadonlyArray1<f64>,
+        sell_volumes: PyReadonlyArray1<f64>,
+        window: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
+        self.backend.vpin(py, buy_volumes, sell_volumes, window)
+    }
 }

@@ -138,3 +138,30 @@ pub fn cci_cpu<'py>(py: Python<'py>, high: PyReadonlyArray1<f64>, low: PyReadonl
     }
     Ok(PyArray1::from_vec(py, results).to_owned().into())
 }
+
+
+pub fn vpin_cpu_kernel(
+    buy_volumes: &[f64],
+    sell_volumes: &[f64],
+    window: usize,
+) -> Vec<f64> {
+    let len = buy_volumes.len().min(sell_volumes.len());
+    let mut output = vec![0.0; len];
+
+    for i in window..len {
+        let buy_sum: f64 = buy_volumes[i - window + 1..=i].iter().sum();
+        let sell_sum: f64 = sell_volumes[i - window + 1..=i].iter().sum();
+
+        let diff = buy_sum - sell_sum;
+        let total = buy_sum + sell_sum;
+        let imbalance = diff.abs();
+
+        if total > 1e-12 {
+            output[i] = imbalance / total;
+        } else {
+            output[i] = 0.0;
+        }
+    }
+
+    output
+}

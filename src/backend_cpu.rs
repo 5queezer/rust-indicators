@@ -27,4 +27,16 @@ impl IndicatorsBackend for CpuBackend {
     fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
         crate::cpu_impls::cci_cpu(py, high, low, close, period)
     }
+    fn vpin<'py>(
+        &self,
+        py: Python<'py>,
+        buy_volumes: PyReadonlyArray1<'py, f64>,
+        sell_volumes: PyReadonlyArray1<'py, f64>,
+        window: usize
+    ) -> PyResult<Py<PyArray1<f64>>> {
+        let buy_vols = buy_volumes.as_array();
+        let sell_vols = sell_volumes.as_array();
+        let results = crate::cpu_impls::vpin_cpu_kernel(buy_vols.as_slice().unwrap(), sell_vols.as_slice().unwrap(), window);
+        Ok(PyArray1::from_vec(py, results).to_owned().into())
+    }
 }

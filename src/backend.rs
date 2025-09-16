@@ -16,4 +16,11 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         -> PyResult<Py<PyArray1<f64>>>;
     fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize)
         -> PyResult<Py<PyArray1<f64>>>;
+    fn vpin<'py>(
+        &self,
+        py: Python<'py>,
+        buy_volumes: PyReadonlyArray1<'py, f64>,
+        sell_volumes: PyReadonlyArray1<'py, f64>,
+        window: usize
+    ) -> PyResult<Py<PyArray1<f64>>>;
 }

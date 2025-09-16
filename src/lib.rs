@@ -16,6 +16,8 @@ pub mod backend_cpu;
 #[cfg(feature = "gpu")]
 pub mod backend_gpu;
 pub mod cpu_impls;
+#[cfg(feature = "gpu")]
+pub mod vpin_kernel;
 pub mod indicators;
 pub mod features;
 pub mod ml_model;

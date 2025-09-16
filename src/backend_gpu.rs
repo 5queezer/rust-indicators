@@ -1,22 +1,20 @@
 #[cfg(feature = "gpu")]
-use cust::{CudaFlags, context::Context, device::Device};
+use cubecl::wgpu::WgpuDevice;
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use crate::backend::IndicatorsBackend;
 
 pub struct GpuBackend {
     #[cfg(feature = "gpu")]
-    _ctx: Context,
+    device: WgpuDevice,
 }
 
 impl GpuBackend {
     pub fn try_new() -> anyhow::Result<Self> {
         #[cfg(feature = "gpu")]
         {
-            cust::init(CudaFlags::empty())?;
-            let device = Device::get_device(0)?;
-            let _ctx = Context::new(device)?;
-            Ok(GpuBackend { _ctx })
+            let device = WgpuDevice::default();
+            Ok(GpuBackend { device })
         }
         #[cfg(not(feature = "gpu"))]
         {
@@ -67,5 +65,21 @@ impl IndicatorsBackend for GpuBackend {
         { crate::cpu_impls::cci_cpu(py, high, low, close, period) }
         #[cfg(not(feature = "gpu"))]
         { unreachable!() }
+    }
+    fn vpin<'py>(
+        &self,
+        py: Python<'py>,
+        buy_volumes: PyReadonlyArray1<'py, f64>,
+        sell_volumes: PyReadonlyArray1<'py, f64>,
+        window: usize
+    ) -> PyResult<Py<PyArray1<f64>>> {
+        #[cfg(feature = "gpu")]
+        {
+            crate::vpin_kernel::vpin_kernel_wrapper(py, &self.device, buy_volumes, sell_volumes, window)
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            unreachable!("gpu backend without feature")
+        }
     }
 }
