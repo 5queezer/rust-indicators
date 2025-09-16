@@ -13,7 +13,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 /// Provides 10-100x performance improvement over Python equivalents
 pub mod backend;
 pub mod backend_cpu;
+pub mod backend_gpu;
 pub mod cpu_impls;
+#[cfg(feature = "gpu")]
+pub mod gpu_impls;
 pub mod indicators;
 pub mod features;
 pub mod ml_model;

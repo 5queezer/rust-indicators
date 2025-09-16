@@ -1,0 +1,6 @@
+# Force tests to run sequentially to prevent environment variable conflicts
+[build]
+jobs = 1
+
+[test]
+jobs = 1

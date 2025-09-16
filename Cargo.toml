@@ -10,13 +10,17 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 bytemuck = "1.13"
-pyo3 = { version = "0.25", features = ["extension-module"] }
+pyo3 = { version = "0.25" }
 numpy = "0.25"
 yata = "0.6"  # Yet Another Technical Analysis
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1"
 rand = "0.8"  # For random data generation in tests
 
+# GPU/CUDA dependencies - optional for GPU acceleration
+cubecl = { version = "0.2", optional = true }
+cubecl-wgpu = { version = "0.2", optional = true }
+cubecl-cuda = { version = "0.2", optional = true }
 
 # Memory allocator for better performance - marked as optional
 mimalloc = { version = "0.1", default-features = false, optional = true }
@@ -30,8 +34,20 @@ strip = true         # Remove debug symbols
 
 [features]
 default = ["mimalloc"]
+gpu = ["cubecl/wgpu", "cubecl-wgpu"]
+cuda = ["gpu", "cubecl/cuda", "cubecl-cuda"]
 
 # For development with better error messages
 [profile.dev]
 debug = true
 panic = "unwind"
+
+# Fix test isolation issues by running tests sequentially
+[profile.test]
+debug = true
+
+# Ensure tests run sequentially to avoid environment variable conflicts
+[[test]]
+name = "backend_selection_tests"
+harness = true
+test = true
