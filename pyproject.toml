@@ -1,0 +1,161 @@
+# File: rust_indicators/pyproject.toml
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rust_indicators"
+version = "0.1.0"
+description = "High-performance technical analysis indicators for FreqTrade with optional GPU acceleration"
+authors = [{name = "Taoist Quant", email = "quant@example.com"}]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.21.0",
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Office/Business :: Financial",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Development Status :: 4 - Beta",
+]
+keywords = ["technical-analysis", "indicators", "trading", "freqtrade", "gpu", "cuda", "performance"]
+readme = "README.md"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+
+# Optional GPU support - can be enabled with: pip install rust_indicators[gpu]
+[project.optional-dependencies]
+gpu = []
+dev = [
+    "pytest>=6.0",
+    "pytest-benchmark>=3.4.0",
+    "black>=22.0",
+    "isort>=5.0",
+]
+
+# GPU feature can be enabled via environment variable:
+# MATURIN_FEATURES="gpu" maturin develop
+
+
+#
+## File: user_data/strategies/config_freqai.json
+#{
+#  "trading_mode": "spot",
+#  "margin_mode": "",
+#  "max_open_trades": 3,
+#  "stake_currency": "USDT",
+#  "stake_amount": "unlimited",
+#  "tradable_balance_ratio": 0.99,
+#  "fiat_display_currency": "USD",
+#  "dry_run": true,
+#  "dry_run_wallet": 1000,
+#  "cancel_open_orders_on_exit": false,
+#
+#  "bot_name": "TaoistML",
+#  "force_entry_enable": false,
+#  "initial_state": "running",
+#  "internals": {
+#    "process_throttle_secs": 5
+#  },
+#
+#  "exchange": {
+#    "name": "binance",
+#    "key": "",
+#    "secret": "",
+#    "ccxt_config": {},
+#    "ccxt_async_config": {},
+#    "pair_whitelist": [
+#      "BTC/USDT",
+#      "ETH/USDT",
+#      "BNB/USDT",
+#      "ADA/USDT",
+#      "DOT/USDT"
+#    ],
+#    "pair_blacklist": [
+#      ".*/BNB",
+#      ".*/BUSD"
+#    ]
+#  },
+#
+#  "entry_pricing": {
+#    "price_side": "same",
+#    "use_order_book": true,
+#    "order_book_top": 1,
+#    "price_last_balance": 0.0,
+#    "check_depth_of_market": {
+#      "enabled": false,
+#      "bids_to_ask_delta": 1
+#    }
+#  },
+#
+#  "exit_pricing": {
+#    "price_side": "same",
+#    "use_order_book": true,
+#    "order_book_top": 1
+#  },
+#
+#  "pairlists": [
+#    {
+#      "method": "StaticPairList"
+#    }
+#  ],
+#
+#  "telegram": {
+#    "enabled": false
+#  },
+#
+#  "api_server": {
+#    "enabled": true,
+#    "listen_ip_address": "127.0.0.1",
+#    "listen_port": 8080,
+#    "verbosity": "error",
+#    "enable_openapi": false,
+#    "jwt_secret_key": "something-secret",
+#    "CORS_origins": [],
+#    "username": "freqtrader",
+#    "password": "SuperSecretPassword"
+#  },
+#
+#  "freqai": {
+#    "enabled": false,
+#    "purge_old_models": true,
+#    "train_period_days": 30,
+#    "backtest_period_days": 7,
+#    "live_retrain_hours": 0,
+#    "expiration_hours": 1,
+#    "identifier": "TaoistML",
+#    "feature_parameters": {
+#      "include_timeframes": ["5m", "15m"],
+#      "include_corr_pairlist": [
+#        "ETH/USDT",
+#        "BTC/USDT"
+#      ],
+#      "label_period_candles": 24,
+#      "include_shifted_candles": 2,
+#      "DI_threshold": 0.9,
+#      "weight_factor": 0.9,
+#      "principal_component_analysis": false,
+#      "use_SVM_to_remove_outliers": true,
+#      "stratify_training_data": 0,
+#      "indicator_max_period_candles": 20,
+#      "indicator_periods_candles": [10, 20]
+#    },
+#    "data_split_parameters": {
+#      "test_size": 0.25,
+#      "shuffle": false
+#    },
+#    "model_training_parameters": {
+#      "n_estimators": 800
+#    }
+#  },
+#
+#  "strategy": "TaoistMLStrategy",
+#  "strategy_path": "user_data/strategies/",
+#  "db_url": "sqlite:///tradesv3.sqlite",
+#  "user_data_dir": "user_data"
+# }

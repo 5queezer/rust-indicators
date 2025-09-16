@@ -1,0 +1,38 @@
+# File: rust_indicators/Cargo.toml
+[package]
+name = "rust_indicators"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_indicators"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+numpy = "0.25"
+yata = "0.6"  # Yet Another Technical Analysis
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1"
+
+# Optional GPU stack (CUDA via cust)
+cust = { version = "0.3.2", optional = true }
+
+# Memory allocator for better performance - marked as optional
+mimalloc = { version = "0.1", default-features = false, optional = true }
+
+# Performance optimizations
+[profile.release]
+lto = true           # Link-time optimization
+codegen-units = 1    # Better optimization
+panic = "abort"      # Smaller binary size
+strip = true         # Remove debug symbols
+
+[features]
+default = ["mimalloc"]
+gpu = ["dep:cust"]
+
+# For development with better error messages
+[profile.dev]
+debug = true
+panic = "unwind"
