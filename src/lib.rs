@@ -20,6 +20,7 @@ pub mod gpu_impls;
 pub mod indicators;
 pub mod features;
 pub mod ml_model;
+pub mod test_utils;
 
 
 // Re-export the main structs for Python bindings
