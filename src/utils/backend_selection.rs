@@ -62,10 +62,136 @@ pub fn select_backend() -> BackendSelectionResult {
 }
 
 /// Simplified backend selection for cases that only need CPU/GPU choice
-/// 
+///
 /// This function handles the common pattern found in validation and test code:
 /// - If "gpu" is requested and available -> "gpu"
 /// - Otherwise -> "cpu"
+///
+/// # Environment Variables
+///
+/// The function respects the following environment variables:
+/// - `RUST_INDICATORS_DEVICE`: Set to "gpu" to request GPU backend, any other value defaults to CPU
+/// - `CUDA_VISIBLE_DEVICES`: Must be set for GPU backend to be considered available
+///
+/// # Examples
+///
+/// ## Default behavior (no environment variables)
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// // Clean environment
+/// env::remove_var("RUST_INDICATORS_DEVICE");
+/// env::remove_var("CUDA_VISIBLE_DEVICES");
+///
+/// let backend = select_simple_backend();
+/// assert_eq!(backend, "cpu"); // Default to CPU when no GPU requested
+/// ```
+///
+/// ## Explicit CPU request
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// env::set_var("RUST_INDICATORS_DEVICE", "cpu");
+/// env::remove_var("CUDA_VISIBLE_DEVICES");
+///
+/// let backend = select_simple_backend();
+/// assert_eq!(backend, "cpu");
+///
+/// // Cleanup
+/// env::remove_var("RUST_INDICATORS_DEVICE");
+/// ```
+///
+/// ## GPU request without CUDA (fallback to CPU)
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// env::set_var("RUST_INDICATORS_DEVICE", "gpu");
+/// env::remove_var("CUDA_VISIBLE_DEVICES"); // No CUDA available
+///
+/// let backend = select_simple_backend();
+/// assert_eq!(backend, "cpu"); // Falls back to CPU when GPU unavailable
+///
+/// // Cleanup
+/// env::remove_var("RUST_INDICATORS_DEVICE");
+/// ```
+///
+/// ## GPU request with CUDA available
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// env::set_var("RUST_INDICATORS_DEVICE", "gpu");
+/// env::set_var("CUDA_VISIBLE_DEVICES", "0"); // CUDA device available
+///
+/// let backend = select_simple_backend();
+/// assert_eq!(backend, "gpu"); // GPU backend selected when available
+///
+/// // Cleanup
+/// env::remove_var("RUST_INDICATORS_DEVICE");
+/// env::remove_var("CUDA_VISIBLE_DEVICES");
+/// ```
+///
+/// ## Invalid device specification
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// env::set_var("RUST_INDICATORS_DEVICE", "invalid");
+///
+/// let backend = select_simple_backend();
+/// assert_eq!(backend, "cpu"); // Non-"gpu" values default to CPU
+///
+/// // Cleanup
+/// env::remove_var("RUST_INDICATORS_DEVICE");
+/// ```
+///
+/// # Error Handling
+///
+/// This function never panics and always returns a valid backend choice.
+/// If GPU backend creation fails for any reason (missing CUDA, initialization errors, etc.),
+/// it gracefully falls back to the CPU backend.
+///
+/// # Usage in Validation Code
+///
+/// This function is commonly used in validation and testing scenarios where you need
+/// to determine which backend was actually selected based on environment configuration:
+///
+/// ```rust
+/// use std::env;
+/// use rust_indicators::utils::backend_selection::select_simple_backend;
+///
+/// // Display current configuration
+/// match env::var("RUST_INDICATORS_DEVICE") {
+///     Ok(device) => println!("Requested device: {}", device),
+///     Err(_) => println!("No device specified (default: CPU)"),
+/// }
+///
+/// let selected = select_simple_backend();
+/// println!("Selected backend: {}", selected);
+///
+/// // Validate selection logic
+/// match env::var("RUST_INDICATORS_DEVICE").as_deref() {
+///     Ok("gpu") => {
+///         if selected == "gpu" {
+///             println!("✓ GPU backend successfully created");
+///         } else {
+///             println!("⚠ GPU requested but fell back to CPU (GPU unavailable)");
+///         }
+///     },
+///     _ => {
+///         assert_eq!(selected, "cpu");
+///         println!("✓ Using CPU backend as expected");
+///     }
+/// }
+/// ```
 pub fn select_simple_backend() -> &'static str {
     match get_requested_device().as_deref() {
         Some("gpu") => {
