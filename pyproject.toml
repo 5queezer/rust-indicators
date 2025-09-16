@@ -42,8 +42,7 @@ cuda = []
 dev = [
     "pytest>=6.0",
     "pytest-benchmark>=3.4.0",
-    "black>=22.0",
-    "isort>=5.0",
+    "ruff>=0.13.0",
 ]
 
 # Feature activation via environment variables during build:

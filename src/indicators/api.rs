@@ -1,8 +1,7 @@
 use pyo3::prelude::*;
 use numpy::{PyArray1, PyReadonlyArray1};
 use crate::core::traits::IndicatorsBackend;
-use crate::backends::cpu::CpuBackend;
-use crate::backends::gpu::PartialGpuBackend;
+use crate::utils::backend_selection;
 
 #[pyclass]
 pub struct RustTA {
@@ -12,15 +11,7 @@ pub struct RustTA {
 
 impl RustTA {
     fn select_backend() -> (Box<dyn IndicatorsBackend>, &'static str) {
-        match std::env::var("RUST_INDICATORS_DEVICE").as_deref() {
-            Ok("gpu") => {
-                match PartialGpuBackend::new() {
-                    Ok(backend) => (Box::new(backend), "gpu"),
-                    Err(_) => (Box::new(CpuBackend::new()), "cpu"),
-                }
-            },
-            _ => (Box::new(CpuBackend::new()), "cpu"),
-        }
+        backend_selection::select_backend()
     }
 }
 

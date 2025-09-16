@@ -1,6 +1,7 @@
 //! Shared test utilities for benchmarks and validation
 
 use std::time::Instant;
+use std::env;
 use rand::Rng;
 
 /// Generate test data for benchmarks
@@ -51,4 +52,47 @@ pub fn format_performance_comparison(name1: &str, time1: f64, name2: &str, time2
     } else {
         format!("{} is {:.2}x faster than {}", name1, 1.0 / speedup, name2)
     }
+}
+
+// Environment variable management utilities for testing
+
+/// Removes both RUST_INDICATORS_DEVICE and CUDA_VISIBLE_DEVICES environment variables
+///
+/// This is the most common cleanup pattern used across test files to ensure
+/// a clean testing environment without any backend preferences.
+pub fn cleanup_backend_env_vars() {
+    env::remove_var("RUST_INDICATORS_DEVICE");
+    env::remove_var("CUDA_VISIBLE_DEVICES");
+}
+
+/// Sets up environment for GPU testing by enabling CUDA
+///
+/// Sets CUDA_VISIBLE_DEVICES="0" to make GPU backend available for testing.
+/// This simulates having a GPU device available.
+pub fn setup_gpu_env() {
+    env::set_var("CUDA_VISIBLE_DEVICES", "0");
+}
+
+/// Sets up environment for CPU-only testing
+///
+/// Removes CUDA_VISIBLE_DEVICES to force CPU backend usage.
+/// This simulates having no GPU devices available.
+pub fn setup_cpu_env() {
+    env::remove_var("CUDA_VISIBLE_DEVICES");
+}
+
+/// Sets the RUST_INDICATORS_DEVICE environment variable to the specified device
+///
+/// # Arguments
+/// * `device` - The device type to set ("cpu", "gpu", "adaptive", etc.)
+///
+/// # Examples
+/// ```
+/// use rust_indicators::utils::testing::setup_device_env;
+///
+/// setup_device_env("gpu");  // Request GPU backend
+/// setup_device_env("cpu");  // Request CPU backend
+/// ```
+pub fn setup_device_env(device: &str) {
+    env::set_var("RUST_INDICATORS_DEVICE", device);
 }

@@ -1,5 +1,6 @@
 // backend_gpu.rs - Keep it stupid simple
 use crate::core::traits::IndicatorsBackend;
+use crate::backends::cpu::backend::CpuBackend;
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
@@ -15,7 +16,9 @@ use crate::backends::gpu::implementations::vpin_cuda_compute;
 
 /// Partial GPU Backend - Only VPIN uses GPU acceleration, all other methods fall back to CPU
 /// This is an honest representation of the current implementation state.
-pub struct PartialGpuBackend;
+pub struct PartialGpuBackend {
+    cpu_backend: CpuBackend,
+}
 
 impl PartialGpuBackend {
     pub fn new() -> PyResult<Self> {
@@ -29,14 +32,18 @@ impl PartialGpuBackend {
         {
             if let Ok(val) = std::env::var("CUDA_VISIBLE_DEVICES") {
                 if !val.is_empty() {
-                    return Ok(PartialGpuBackend);
+                    return Ok(PartialGpuBackend {
+                        cpu_backend: CpuBackend::new(),
+                    });
                 }
             }
         }
         
         // In production, we could add more sophisticated GPU initialization here
         // For now, if is_available() returns true, we assume GPU is ready
-        Ok(PartialGpuBackend)
+        Ok(PartialGpuBackend {
+            cpu_backend: CpuBackend::new(),
+        })
     }
     
     pub fn is_available() -> bool {
@@ -49,40 +56,40 @@ impl PartialGpuBackend {
 }
 
 impl IndicatorsBackend for PartialGpuBackend {
-    fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) 
+    fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
         -> PyResult<Py<PyArray1<f64>>> {
-        // For now, delegate to CPU - add GPU kernels one by one
-        crate::backends::cpu::implementations::rsi_cpu(py, prices, period)
+        // Delegate to CPU backend
+        self.cpu_backend.rsi(py, prices, period)
     }
     
-    fn ema<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) 
+    fn ema<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
         -> PyResult<Py<PyArray1<f64>>> {
-        crate::backends::cpu::implementations::ema_cpu(py, prices, period)
+        self.cpu_backend.ema(py, prices, period)
     }
     
-    fn sma<'py>(&self, py: Python<'py>, values: PyReadonlyArray1<'py, f64>, period: usize) 
+    fn sma<'py>(&self, py: Python<'py>, values: PyReadonlyArray1<'py, f64>, period: usize)
         -> PyResult<Py<PyArray1<f64>>> {
-        crate::backends::cpu::implementations::sma_cpu(py, values, period)
+        self.cpu_backend.sma(py, values, period)
     }
     
-    fn bollinger_bands<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64) 
+    fn bollinger_bands<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64)
         -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-        crate::backends::cpu::implementations::bollinger_bands_cpu(py, prices, period, std_dev)
+        self.cpu_backend.bollinger_bands(py, prices, period, std_dev)
     }
     
-    fn atr<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, 
+    fn atr<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>,
                close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
-        crate::backends::cpu::implementations::atr_cpu(py, high, low, close, period)
+        self.cpu_backend.atr(py, high, low, close, period)
     }
     
-    fn williams_r<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, 
+    fn williams_r<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>,
                       close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
-        crate::backends::cpu::implementations::williams_r_cpu(py, high, low, close, period)
+        self.cpu_backend.williams_r(py, high, low, close, period)
     }
     
-    fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, 
+    fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>,
                close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
-        crate::backends::cpu::implementations::cci_cpu(py, high, low, close, period)
+        self.cpu_backend.cci(py, high, low, close, period)
     }
     
     fn vpin<'py>(&self, py: Python<'py>, buy_volumes: PyReadonlyArray1<'py, f64>,
@@ -108,7 +115,7 @@ impl IndicatorsBackend for PartialGpuBackend {
             #[cfg(not(feature = "gpu"))]
             {
                 // Fallback to CPU when no GPU features are enabled
-                crate::backends::cpu::implementations::vpin_cpu_kernel(buy_slice, sell_slice, window)
+                crate::utils::benchmarking::benchmark_vpin_cpu(buy_slice, sell_slice, window)
             }
         };
         
