@@ -456,10 +456,20 @@ impl TradingClassifier {
         Ok(())
     }
 
-    /// Create purged cross-validation splits
-    fn create_purged_cv_splits(&mut self, n_samples: usize, n_splits: usize) -> PyResult<()> {
+    /// Create purged cross-validation splits (stores internally)
+    fn create_purged_cv_splits_internal(&mut self, n_samples: usize, n_splits: usize) -> PyResult<()> {
         self.cv_splits = self.cross_validator.create_purged_cv_splits(n_samples, n_splits, self.embargo_pct)?;
         Ok(())
+    }
+
+    /// Create purged cross-validation splits (returns splits)
+    fn create_purged_cv_splits(
+        &self,
+        n_samples: usize,
+        n_splits: usize,
+        embargo_pct: f32,
+    ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
+        <Self as CrossValidator>::create_purged_cv_splits(self, n_samples, n_splits, embargo_pct)
     }
 
     /// Get feature importance scores

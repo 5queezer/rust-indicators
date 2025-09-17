@@ -205,7 +205,7 @@ def advanced_trading_classifier_example():
     
     # Create custom purged CV splits
     print(f"Creating purged cross-validation splits...")
-    classifier.create_purged_cv_splits(n_samples=len(X_train), n_splits=5)
+    classifier.create_purged_cv_splits(n_samples=len(X_train), n_splits=5, embargo_pct=classifier.get_embargo_pct())
     
     # Train with higher learning rate
     print(f"\nTraining with advanced parameters...")
@@ -275,7 +275,30 @@ def sample_weighting_example():
     returns = data['returns']
     
     print("Calculating volatility-based sample weights...")
-    weights = classifier.calculate_sample_weights(returns)
+    
+    # Calculate and store weights internally for training
+    classifier.calculate_sample_weights(returns)
+    
+    # Manually calculate weights for analysis using the same algorithm as the Rust code
+    def calculate_volatility_weights_manual(returns, window_size=20, min_weight=0.1, max_weight=3.0):
+        """Manual implementation of volatility weighting for analysis"""
+        n = len(returns)
+        weights = np.ones(n, dtype=np.float32)
+        window = min(window_size, n)
+        
+        for i in range(window, n):
+            window_start = max(0, i - window)
+            window_rets = returns[window_start:i]
+            abs_ret = abs(returns[i])
+            avg_abs_ret = np.mean(np.abs(window_rets))
+            
+            if avg_abs_ret > 0.0:
+                weights[i] = np.clip(abs_ret / avg_abs_ret, min_weight, max_weight)
+        
+        return weights
+    
+    # Calculate weights for analysis
+    weights = calculate_volatility_weights_manual(returns)
     
     # Analyze weight distribution
     print(f"Sample Weight Statistics:")
