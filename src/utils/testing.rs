@@ -1,8 +1,8 @@
 //! Shared test utilities for benchmarks and validation
 
-use std::time::Instant;
-use std::env;
 use rand::Rng;
+use std::env;
+use std::time::Instant;
 
 /// Generate test data for benchmarks
 pub fn generate_test_data(size: usize) -> (Vec<f64>, Vec<f64>) {
@@ -19,11 +19,11 @@ where
 {
     let start = Instant::now();
     let mut result = None;
-    
+
     for _ in 0..iterations {
         result = Some(func());
     }
-    
+
     let duration = start.elapsed().as_secs_f64();
     (duration, result.unwrap())
 }
@@ -33,8 +33,9 @@ pub fn verify_results_match(result1: &[f64], result2: &[f64], tolerance: f64) ->
     if result1.len() != result2.len() {
         return false;
     }
-    
-    result1.iter()
+
+    result1
+        .iter()
         .zip(result2.iter())
         .all(|(&val1, &val2)| (val1 - val2).abs() <= tolerance)
 }

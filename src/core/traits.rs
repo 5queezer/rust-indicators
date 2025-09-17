@@ -76,8 +76,12 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// # Formula
     /// RSI = 100 - (100 / (1 + RS))
     /// where RS = Average Gain / Average Loss over the specified period
-    fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn rsi<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Exponential Moving Average (EMA)
     ///
@@ -95,8 +99,12 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// # Formula
     /// EMA = (Price × Multiplier) + (Previous EMA × (1 - Multiplier))
     /// where Multiplier = 2 / (period + 1)
-    fn ema<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn ema<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Simple Moving Average (SMA)
     ///
@@ -113,8 +121,12 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     ///
     /// # Formula
     /// SMA = (Sum of prices over period) / period
-    fn sma<'py>(&self, py: Python<'py>, values: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn sma<'py>(
+        &self,
+        py: Python<'py>,
+        values: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Bollinger Bands
     ///
@@ -135,8 +147,13 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// - Middle Band = SMA(period)
     /// - Upper Band = Middle Band + (std_dev × Standard Deviation)
     /// - Lower Band = Middle Band - (std_dev × Standard Deviation)
-    fn bollinger_bands<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64)
-        -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
+    fn bollinger_bands<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+        std_dev: f64,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
 
     /// Calculate Average True Range (ATR)
     ///
@@ -156,8 +173,14 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// # Formula
     /// True Range = max(High - Low, |High - Previous Close|, |Low - Previous Close|)
     /// ATR = EMA of True Range over the specified period
-    fn atr<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn atr<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Williams %R
     ///
@@ -177,8 +200,14 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     ///
     /// # Formula
     /// %R = (Highest High - Close) / (Highest High - Lowest Low) × -100
-    fn williams_r<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn williams_r<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Commodity Channel Index (CCI)
     ///
@@ -198,8 +227,14 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// # Formula
     /// CCI = (Typical Price - SMA of Typical Price) / (0.015 × Mean Deviation)
     /// where Typical Price = (High + Low + Close) / 3
-    fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn cci<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Volume-synchronized Probability of Informed Trading (VPIN)
     ///
@@ -228,7 +263,7 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         py: Python<'py>,
         buy_volumes: PyReadonlyArray1<'py, f64>,
         sell_volumes: PyReadonlyArray1<'py, f64>,
-        window: usize
+        window: usize,
     ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Ehlers SuperSmoother Filter
@@ -256,8 +291,12 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// # Performance Note
     /// This indicator has sequential dependencies and does not benefit from GPU acceleration.
     /// All backends delegate to CPU implementation for optimal performance.
-    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize)
-        -> PyResult<Py<PyArray1<f64>>>;
+    fn supersmoother<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>>;
 
     /// Calculate Ehlers Hilbert Transform
     ///
@@ -293,6 +332,10 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// This indicator has mixed parallelization potential. The roofing filter stages
     /// can benefit from GPU acceleration, but AGC and SuperSmoother have sequential
     /// dependencies that are better suited for CPU computation.
-    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize)
-        -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
+    fn hilbert_transform<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        lp_period: usize,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
 }

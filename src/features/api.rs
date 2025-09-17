@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use numpy::{PyArray1, PyReadonlyArray1};
+use pyo3::prelude::*;
 
 /// Feature engineering module
 #[pyclass]
@@ -35,7 +35,11 @@ impl RustFeatures {
     }
 
     /// Log returns calculation
-    fn log_returns(&self, py: Python, prices: PyReadonlyArray1<f64>) -> PyResult<Py<PyArray1<f64>>> {
+    fn log_returns(
+        &self,
+        py: Python,
+        prices: PyReadonlyArray1<f64>,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         let prices = prices.as_array();
         let len = prices.len();
         let mut result = vec![f64::NAN; len];
@@ -75,10 +79,8 @@ impl RustFeatures {
                 if !window_data.is_empty() {
                     let mean: f64 = window_data.iter().sum::<f64>() / window_data.len() as f64;
                     let denom = (window_data.len() - 1).max(1) as f64;
-                    let variance: f64 = window_data
-                        .iter()
-                        .map(|x| (x - mean).powi(2))
-                        .sum::<f64>() / denom;
+                    let variance: f64 =
+                        window_data.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / denom;
 
                     result[i] = variance.sqrt();
                 }

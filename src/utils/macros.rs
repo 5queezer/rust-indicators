@@ -81,7 +81,7 @@
 //! ## Adaptive Backend Pattern
 //!
 //! ```rust,ignore
-//! fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) 
+//! fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
 //!     -> PyResult<Py<PyArray1<f64>>> {
 //!     delegate_indicator!(
 //!         self, py, "rsi",
@@ -164,11 +164,11 @@
 ///
 /// **Before macro usage (per indicator):**
 /// ```rust,ignore
-/// fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) 
+/// fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
 ///     -> PyResult<Py<PyArray1<f64>>> {
-///     let params = IndicatorParams::Rsi { 
-///         data_size: prices.as_array().len(), 
-///         period 
+///     let params = IndicatorParams::Rsi {
+///         data_size: prices.as_array().len(),
+///         period
 ///     };
 ///     
 ///     if self.should_use_gpu("rsi", &params) {
@@ -183,7 +183,7 @@
 ///
 /// **After macro usage (per indicator):**
 /// ```rust,ignore
-/// fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) 
+/// fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize)
 ///     -> PyResult<Py<PyArray1<f64>>> {
 ///     delegate_indicator!(
 ///         self, py, "rsi",
@@ -234,13 +234,13 @@ macro_rules! delegate_indicator {
     ($self:expr, $py:expr, $indicator_name:expr, $params:expr, $method_call:ident($($args:expr),*)) => {
         {
             let params = $params;
-            
+
             if $self.should_use_gpu($indicator_name, &params) {
                 if let Some(ref gpu_backend) = $self.gpu_backend {
                     return gpu_backend.$method_call($py, $($args),*);
                 }
             }
-            
+
             $self.cpu_backend.$method_call($py, $($args),*)
         }
     };
@@ -452,7 +452,10 @@ mod tests {
         );
         assert!(error_msg.contains("test_parameter"));
         assert!(error_msg.contains("array is not contiguous"));
-        assert_eq!(error_msg, "Failed to extract slice from test_parameter: array is not contiguous");
+        assert_eq!(
+            error_msg,
+            "Failed to extract slice from test_parameter: array is not contiguous"
+        );
     }
 
     /// Test cpu_method! macro compilation
@@ -460,27 +463,38 @@ mod tests {
     fn test_cpu_method_macro_compiles() {
         // This is a compile-time test to ensure cpu_method! macro syntax is valid
         // The macro generates method implementations that delegate to CPU functions
-        
+
+        use numpy::PyArray1;
         use numpy::PyReadonlyArray1;
         use pyo3::prelude::*;
-        use numpy::PyArray1;
-        
+
         // Mock CPU implementation function
-        fn mock_rsi_cpu(_py: Python<'_>, _prices: PyReadonlyArray1<'_, f64>, _period: usize) -> PyResult<Py<PyArray1<f64>>> {
+        fn mock_rsi_cpu(
+            _py: Python<'_>,
+            _prices: PyReadonlyArray1<'_, f64>,
+            _period: usize,
+        ) -> PyResult<Py<PyArray1<f64>>> {
             // This would normally call the actual CPU implementation
             // For testing, we just verify the signature compiles
-            Err(pyo3::exceptions::PyNotImplementedError::new_err("Test mock"))
+            Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "Test mock",
+            ))
         }
-        
+
         // Test CPU method macro pattern
         struct TestCpuBackend;
         impl TestCpuBackend {
-            fn test_cpu_method<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+            fn test_cpu_method<'py>(
+                &self,
+                py: Python<'py>,
+                prices: PyReadonlyArray1<'py, f64>,
+                period: usize,
+            ) -> PyResult<Py<PyArray1<f64>>> {
                 // This simulates what cpu_method! macro generates
                 mock_rsi_cpu(py, prices, period)
             }
         }
-        
+
         // Verify the method signature compiles
         let _backend = TestCpuBackend;
         // The fact that this compiles proves the macro pattern works
@@ -492,29 +506,41 @@ mod tests {
     fn test_gpu_method_macro_compiles() {
         // This is a compile-time test to ensure gpu_method! macro syntax is valid
         // The macro generates method implementations that delegate to CPU backend
-        
+
+        use numpy::PyArray1;
         use numpy::PyReadonlyArray1;
         use pyo3::prelude::*;
-        use numpy::PyArray1;
-        
+
         // Test GPU method macro pattern
         struct TestCpuBackend;
         impl TestCpuBackend {
-            fn rsi<'py>(&self, _py: Python<'py>, _prices: PyReadonlyArray1<'py, f64>, _period: usize) -> PyResult<Py<PyArray1<f64>>> {
-                Err(pyo3::exceptions::PyNotImplementedError::new_err("Test mock"))
+            fn rsi<'py>(
+                &self,
+                _py: Python<'py>,
+                _prices: PyReadonlyArray1<'py, f64>,
+                _period: usize,
+            ) -> PyResult<Py<PyArray1<f64>>> {
+                Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                    "Test mock",
+                ))
             }
         }
-        
+
         struct TestGpuBackend {
             cpu_backend: TestCpuBackend,
         }
         impl TestGpuBackend {
-            fn test_gpu_method<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+            fn test_gpu_method<'py>(
+                &self,
+                py: Python<'py>,
+                prices: PyReadonlyArray1<'py, f64>,
+                period: usize,
+            ) -> PyResult<Py<PyArray1<f64>>> {
                 // This simulates what gpu_method! macro generates
                 self.cpu_backend.rsi(py, prices, period)
             }
         }
-        
+
         // Verify the method signature compiles
         let cpu_backend = TestCpuBackend;
         let _gpu_backend = TestGpuBackend { cpu_backend };
@@ -527,7 +553,7 @@ mod tests {
     fn test_delegate_indicator_macro_compiles() {
         // This is a compile-time test to ensure delegate_indicator! macro syntax is valid
         // The macro generates intelligent GPU/CPU delegation logic
-        
+
         // Mock structures to test the delegation pattern
         struct MockParams;
         struct MockBackend {
@@ -536,31 +562,31 @@ mod tests {
         }
         struct MockGpuBackend;
         struct MockCpuBackend;
-        
+
         impl MockBackend {
             fn should_use_gpu(&self, _name: &str, _params: &MockParams) -> bool {
                 false // For testing, always use CPU
             }
         }
-        
+
         impl MockGpuBackend {
             fn test_method(&self) -> Result<String, &'static str> {
                 Ok("GPU result".to_string())
             }
         }
-        
+
         impl MockCpuBackend {
             fn test_method(&self) -> Result<String, &'static str> {
                 Ok("CPU result".to_string())
             }
         }
-        
+
         // Test the delegation pattern that delegate_indicator! macro generates
         let backend = MockBackend {
             gpu_backend: None,
             cpu_backend: MockCpuBackend,
         };
-        
+
         let params = MockParams;
         let result = (|| -> Result<String, &'static str> {
             if backend.should_use_gpu("test", &params) {
@@ -570,7 +596,7 @@ mod tests {
             }
             backend.cpu_backend.test_method()
         })();
-        
+
         assert_eq!(result.unwrap(), "CPU result");
     }
 

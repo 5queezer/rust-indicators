@@ -4,12 +4,12 @@
 //! code duplication across the codebase. It handles GPU availability checking,
 //! environment variable parsing, and backend selection with proper fallback.
 
-use std::env;
-use pyo3::prelude::*;
-use crate::core::traits::IndicatorsBackend;
+use crate::backends::adaptive::AdaptiveBackend;
 use crate::backends::cpu::CpuBackend;
 use crate::backends::gpu::PartialGpuBackend;
-use crate::backends::adaptive::AdaptiveBackend;
+use crate::core::traits::IndicatorsBackend;
+use pyo3::prelude::*;
+use std::env;
 
 /// Result type for backend selection operations
 pub type BackendSelectionResult = (Box<dyn IndicatorsBackend>, &'static str);
@@ -30,7 +30,7 @@ pub fn get_requested_device() -> Option<String> {
 }
 
 /// Selects the appropriate backend based on environment configuration
-/// 
+///
 /// This function replicates the exact logic from RustTA::select_backend()
 /// with proper fallback handling:
 /// - "cpu" -> CPU backend
@@ -40,24 +40,18 @@ pub fn get_requested_device() -> Option<String> {
 pub fn select_backend() -> BackendSelectionResult {
     match get_requested_device().as_deref() {
         Some("cpu") => (Box::new(CpuBackend::new()), "cpu"),
-        Some("gpu") => {
-            match try_create_gpu_backend() {
-                Ok(backend) => (Box::new(backend), "gpu"),
-                Err(_) => (Box::new(CpuBackend::new()), "cpu"),
-            }
+        Some("gpu") => match try_create_gpu_backend() {
+            Ok(backend) => (Box::new(backend), "gpu"),
+            Err(_) => (Box::new(CpuBackend::new()), "cpu"),
         },
-        Some("adaptive") => {
-            match AdaptiveBackend::new() {
-                Ok(backend) => (Box::new(backend), "adaptive"),
-                Err(_) => (Box::new(CpuBackend::new()), "cpu"),
-            }
+        Some("adaptive") => match AdaptiveBackend::new() {
+            Ok(backend) => (Box::new(backend), "adaptive"),
+            Err(_) => (Box::new(CpuBackend::new()), "cpu"),
         },
-        _ => {
-            match AdaptiveBackend::new() {
-                Ok(backend) => (Box::new(backend), "adaptive"),
-                Err(_) => (Box::new(CpuBackend::new()), "cpu"),
-            }
-        }
+        _ => match AdaptiveBackend::new() {
+            Ok(backend) => (Box::new(backend), "adaptive"),
+            Err(_) => (Box::new(CpuBackend::new()), "cpu"),
+        },
     }
 }
 
@@ -194,11 +188,9 @@ pub fn select_backend() -> BackendSelectionResult {
 /// ```
 pub fn select_simple_backend() -> &'static str {
     match get_requested_device().as_deref() {
-        Some("gpu") => {
-            match try_create_gpu_backend() {
-                Ok(_) => "gpu",
-                Err(_) => "cpu",
-            }
+        Some("gpu") => match try_create_gpu_backend() {
+            Ok(_) => "gpu",
+            Err(_) => "cpu",
         },
         _ => "cpu",
     }
@@ -214,11 +206,11 @@ mod tests {
         // Test without CUDA
         env::remove_var("CUDA_VISIBLE_DEVICES");
         assert!(!is_gpu_available());
-        
+
         // Test with CUDA
         env::set_var("CUDA_VISIBLE_DEVICES", "0");
         assert!(is_gpu_available());
-        
+
         // Clean up
         env::remove_var("CUDA_VISIBLE_DEVICES");
     }
@@ -228,15 +220,15 @@ mod tests {
         // Test no environment variable
         env::remove_var("RUST_INDICATORS_DEVICE");
         assert_eq!(get_requested_device(), None);
-        
+
         // Test GPU request
         env::set_var("RUST_INDICATORS_DEVICE", "gpu");
         assert_eq!(get_requested_device(), Some("gpu".to_string()));
-        
+
         // Test CPU request
         env::set_var("RUST_INDICATORS_DEVICE", "cpu");
         assert_eq!(get_requested_device(), Some("cpu".to_string()));
-        
+
         // Clean up
         env::remove_var("RUST_INDICATORS_DEVICE");
     }
@@ -246,24 +238,24 @@ mod tests {
         // Clean up any existing environment variables first
         env::remove_var("RUST_INDICATORS_DEVICE");
         env::remove_var("CUDA_VISIBLE_DEVICES");
-        
+
         // Test default (no env var)
         assert_eq!(select_simple_backend(), "cpu");
-        
+
         // Test explicit CPU
         env::set_var("RUST_INDICATORS_DEVICE", "cpu");
         assert_eq!(select_simple_backend(), "cpu");
-        
+
         // Test GPU without CUDA (should fallback to CPU)
         env::set_var("RUST_INDICATORS_DEVICE", "gpu");
         env::remove_var("CUDA_VISIBLE_DEVICES");
         assert_eq!(select_simple_backend(), "cpu");
-        
+
         // Test GPU with CUDA
         env::set_var("RUST_INDICATORS_DEVICE", "gpu");
         env::set_var("CUDA_VISIBLE_DEVICES", "0");
         assert_eq!(select_simple_backend(), "gpu");
-        
+
         // Clean up
         env::remove_var("RUST_INDICATORS_DEVICE");
         env::remove_var("CUDA_VISIBLE_DEVICES");

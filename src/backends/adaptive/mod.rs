@@ -86,9 +86,9 @@
 //! - **GPU Unavailable**: Graceful fallback to CPU backend
 //! - **Backend Errors**: Propagate PyO3 errors with context
 
-use crate::core::traits::IndicatorsBackend;
 use crate::backends::cpu::CpuBackend;
 use crate::backends::gpu::PartialGpuBackend;
+use crate::core::traits::IndicatorsBackend;
 use crate::delegate_indicator;
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
@@ -123,7 +123,7 @@ impl IndicatorParams {
             IndicatorParams::HilbertTransform { data_size, .. } => *data_size,
         }
     }
-    
+
     pub fn computational_complexity(&self) -> usize {
         match self {
             IndicatorParams::Vpin { data_size, window } => data_size * window,
@@ -135,7 +135,10 @@ impl IndicatorParams {
             IndicatorParams::WilliamsR { data_size, period } => data_size * period,
             IndicatorParams::Cci { data_size, period } => data_size * period,
             IndicatorParams::SuperSmoother { data_size, period } => data_size * period,
-            IndicatorParams::HilbertTransform { data_size, lp_period } => data_size * lp_period * 4, // Complex algorithm with multiple stages
+            IndicatorParams::HilbertTransform {
+                data_size,
+                lp_period,
+            } => data_size * lp_period * 4, // Complex algorithm with multiple stages
         }
     }
 }
@@ -157,10 +160,8 @@ impl Default for PerformanceProfile {
         thresholds.insert("cci".to_string(), usize::MAX);
         thresholds.insert("supersmoother".to_string(), usize::MAX);
         thresholds.insert("hilbert_transform".to_string(), 1000); // Mixed GPU/CPU algorithm, moderate threshold
-        
-        Self {
-            thresholds,
-        }
+
+        Self { thresholds }
     }
 }
 
@@ -175,7 +176,7 @@ impl AdaptiveBackend {
     pub fn new() -> PyResult<Self> {
         let gpu_backend = PartialGpuBackend::new().ok();
         let gpu_available = gpu_backend.is_some();
-        
+
         Ok(AdaptiveBackend {
             cpu_backend: CpuBackend::new(),
             gpu_backend,
@@ -183,106 +184,212 @@ impl AdaptiveBackend {
             gpu_available,
         })
     }
-    
+
     fn should_use_gpu(&self, indicator: &str, params: &IndicatorParams) -> bool {
         if !self.gpu_available {
             return false;
         }
-        
-        let threshold = self.performance_profile.thresholds
+
+        let threshold = self
+            .performance_profile
+            .thresholds
             .get(indicator)
             .copied()
             .unwrap_or(usize::MAX);
-            
+
         params.computational_complexity() >= threshold
     }
-    
-    
 }
 
 impl IndicatorsBackend for AdaptiveBackend {
-    fn rsi<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn rsi<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "rsi",
-            IndicatorParams::Rsi { data_size: prices.as_array().len(), period },
+            self,
+            py,
+            "rsi",
+            IndicatorParams::Rsi {
+                data_size: prices.as_array().len(),
+                period
+            },
             rsi(prices, period)
         )
     }
-    
-    fn ema<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn ema<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "ema",
-            IndicatorParams::Ema { data_size: prices.as_array().len(), period },
+            self,
+            py,
+            "ema",
+            IndicatorParams::Ema {
+                data_size: prices.as_array().len(),
+                period
+            },
             ema(prices, period)
         )
     }
-    
-    fn sma<'py>(&self, py: Python<'py>, values: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn sma<'py>(
+        &self,
+        py: Python<'py>,
+        values: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "sma",
-            IndicatorParams::Sma { data_size: values.as_array().len(), period },
+            self,
+            py,
+            "sma",
+            IndicatorParams::Sma {
+                data_size: values.as_array().len(),
+                period
+            },
             sma(values, period)
         )
     }
-    
-    fn bollinger_bands<'py>(&self, py: Python<'py>, prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+
+    fn bollinger_bands<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+        std_dev: f64,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
         delegate_indicator!(
-            self, py, "bollinger_bands",
-            IndicatorParams::BollingerBands { data_size: prices.as_array().len(), period },
+            self,
+            py,
+            "bollinger_bands",
+            IndicatorParams::BollingerBands {
+                data_size: prices.as_array().len(),
+                period
+            },
             bollinger_bands(prices, period, std_dev)
         )
     }
-    
-    fn atr<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn atr<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "atr",
-            IndicatorParams::Atr { data_size: high.as_array().len(), period },
+            self,
+            py,
+            "atr",
+            IndicatorParams::Atr {
+                data_size: high.as_array().len(),
+                period
+            },
             atr(high, low, close, period)
         )
     }
-    
-    fn williams_r<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn williams_r<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "williams_r",
-            IndicatorParams::WilliamsR { data_size: high.as_array().len(), period },
+            self,
+            py,
+            "williams_r",
+            IndicatorParams::WilliamsR {
+                data_size: high.as_array().len(),
+                period
+            },
             williams_r(high, low, close, period)
         )
     }
-    
-    fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn cci<'py>(
+        &self,
+        py: Python<'py>,
+        high: PyReadonlyArray1<'py, f64>,
+        low: PyReadonlyArray1<'py, f64>,
+        close: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "cci",
-            IndicatorParams::Cci { data_size: high.as_array().len(), period },
+            self,
+            py,
+            "cci",
+            IndicatorParams::Cci {
+                data_size: high.as_array().len(),
+                period
+            },
             cci(high, low, close, period)
         )
     }
-    
-    fn vpin<'py>(&self, py: Python<'py>, buy_volumes: PyReadonlyArray1<'py, f64>, sell_volumes: PyReadonlyArray1<'py, f64>, window: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn vpin<'py>(
+        &self,
+        py: Python<'py>,
+        buy_volumes: PyReadonlyArray1<'py, f64>,
+        sell_volumes: PyReadonlyArray1<'py, f64>,
+        window: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "vpin",
-            IndicatorParams::Vpin { data_size: buy_volumes.as_array().len(), window },
+            self,
+            py,
+            "vpin",
+            IndicatorParams::Vpin {
+                data_size: buy_volumes.as_array().len(),
+                window
+            },
             vpin(buy_volumes, sell_volumes, window)
         )
     }
-    
-    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+
+    fn supersmoother<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         delegate_indicator!(
-            self, py, "supersmoother",
-            IndicatorParams::SuperSmoother { data_size: data.as_array().len(), period },
+            self,
+            py,
+            "supersmoother",
+            IndicatorParams::SuperSmoother {
+                data_size: data.as_array().len(),
+                period
+            },
             supersmoother(data, period)
         )
     }
-    
-    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+
+    fn hilbert_transform<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        lp_period: usize,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
         let data_len = data.as_array().len();
-        
+
         // Adaptive selection based on data size and complexity
         // Hilbert Transform has mixed parallelization potential:
         // - Roofing filter stages can benefit from GPU
         // - AGC and SuperSmoother have sequential dependencies
         // Use GPU for larger datasets where parallel stages provide benefit
-        let params = IndicatorParams::HilbertTransform { data_size: data_len, lp_period };
-        
+        let params = IndicatorParams::HilbertTransform {
+            data_size: data_len,
+            lp_period,
+        };
+
         if self.should_use_gpu("hilbert_transform", &params) {
             // Use GPU backend for larger datasets
             if let Some(ref gpu_backend) = self.gpu_backend {
@@ -294,7 +401,7 @@ impl IndicatorsBackend for AdaptiveBackend {
                 }
             }
         }
-        
+
         // Use CPU backend for smaller datasets or as fallback
         self.cpu_backend.hilbert_transform(py, data, lp_period)
     }

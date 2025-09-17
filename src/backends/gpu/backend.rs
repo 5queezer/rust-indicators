@@ -163,6 +163,8 @@
 //! The backend uses the [`gpu_method!`] macro for CPU delegation:
 //!
 //! ```rust
+//! use rust_indicators::gpu_method;
+//!
 //! gpu_method!(rsi, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
 //! ```
 //!
@@ -190,23 +192,23 @@
 //! }
 //! ```
 
-use crate::core::traits::IndicatorsBackend;
 use crate::backends::cpu::backend::CpuBackend;
-use crate::{gpu_method, extract_safe};
+use crate::core::traits::IndicatorsBackend;
+use crate::{extract_safe, gpu_method};
 use numpy::{PyArray1, PyReadonlyArray1};
-use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 
+#[cfg(all(feature = "gpu", not(feature = "cuda")))]
+use crate::backends::gpu::implementations::hilbert_transform_gpu_compute;
+#[cfg(all(feature = "gpu", not(feature = "cuda")))]
+use crate::backends::gpu::implementations::vpin_gpu_compute;
+#[cfg(feature = "cuda")]
+use crate::backends::gpu::implementations::{hilbert_transform_cuda_compute, vpin_cuda_compute};
 #[cfg(all(feature = "gpu", not(feature = "cuda")))]
 use cubecl::wgpu::{WgpuDevice, WgpuRuntime};
 #[cfg(all(feature = "gpu", not(feature = "cuda")))]
 use cubecl::Runtime;
-#[cfg(all(feature = "gpu", not(feature = "cuda")))]
-use crate::backends::gpu::implementations::vpin_gpu_compute;
-#[cfg(feature = "cuda")]
-use crate::backends::gpu::implementations::{vpin_cuda_compute, hilbert_transform_cuda_compute};
-#[cfg(all(feature = "gpu", not(feature = "cuda")))]
-use crate::backends::gpu::implementations::hilbert_transform_gpu_compute;
 
 /// Partial GPU Backend for Selective GPU Acceleration
 ///
@@ -272,7 +274,7 @@ impl PartialGpuBackend {
         if !Self::is_available() {
             return Err(PyRuntimeError::new_err("GPU not available"));
         }
-        
+
         // In test mode, just return success if CUDA_VISIBLE_DEVICES is set and not empty
         #[cfg(test)]
         {
@@ -284,14 +286,14 @@ impl PartialGpuBackend {
                 }
             }
         }
-        
+
         // In production, we could add more sophisticated GPU initialization here
         // For now, if is_available() returns true, we assume GPU is ready
         Ok(PartialGpuBackend {
             cpu_backend: CpuBackend::new(),
         })
     }
-    
+
     /// Checks if GPU acceleration is available
     ///
     /// Determines GPU availability by checking the `CUDA_VISIBLE_DEVICES` environment variable.
@@ -311,6 +313,7 @@ impl PartialGpuBackend {
     /// # Example
     ///
     /// ```rust
+    /// use rust_indicators::backends::cpu::CpuBackend;
     /// use rust_indicators::backends::gpu::PartialGpuBackend;
     ///
     /// if PartialGpuBackend::is_available() {
@@ -341,7 +344,7 @@ impl IndicatorsBackend for PartialGpuBackend {
     gpu_method!(williams_r, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(cci, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(supersmoother, (data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
-    
+
     /// Calculate Volume-synchronized Probability of Informed Trading (VPIN) with GPU acceleration
     ///
     /// This is one of the primary GPU-accelerated indicators in the partial GPU backend.
@@ -378,13 +381,18 @@ impl IndicatorsBackend for PartialGpuBackend {
     /// vpin_values = gpu_backend.vpin(buy_volumes, sell_volumes, window=50)
     /// # For large datasets, this will be significantly faster than CPU
     /// ```
-    fn vpin<'py>(&self, py: Python<'py>, buy_volumes: PyReadonlyArray1<'py, f64>,
-                sell_volumes: PyReadonlyArray1<'py, f64>, window: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn vpin<'py>(
+        &self,
+        py: Python<'py>,
+        buy_volumes: PyReadonlyArray1<'py, f64>,
+        sell_volumes: PyReadonlyArray1<'py, f64>,
+        window: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         let buy_array = buy_volumes.as_array();
         let sell_array = sell_volumes.as_array();
         let buy_slice = extract_safe!(buy_array, "buy_volumes");
         let sell_slice = extract_safe!(sell_array, "sell_volumes");
-        
+
         let results = {
             #[cfg(feature = "cuda")]
             {
@@ -404,10 +412,10 @@ impl IndicatorsBackend for PartialGpuBackend {
                 crate::utils::benchmarking::benchmark_vpin_cpu(buy_slice, sell_slice, window)
             }
         };
-        
+
         Ok(PyArray1::from_vec(py, results).to_owned().into())
     }
-    
+
     /// Calculate Hilbert Transform with selective GPU acceleration
     ///
     /// The Hilbert Transform is the second GPU-accelerated indicator in the partial GPU backend.
@@ -452,13 +460,17 @@ impl IndicatorsBackend for PartialGpuBackend {
     /// real_part, imag_part = gpu_backend.hilbert_transform(signal_data, lp_period=20)
     /// # GPU acceleration provides significant speedup for large signals
     /// ```
-    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize)
-        -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+    fn hilbert_transform<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        lp_period: usize,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
         #[cfg(any(feature = "cuda", all(feature = "gpu", not(feature = "cuda"))))]
         {
             let data_array = data.as_array();
             let data_slice = extract_safe!(data_array, "data");
-            
+
             let (real_vec, imag_vec) = {
                 #[cfg(feature = "cuda")]
                 {
@@ -473,10 +485,10 @@ impl IndicatorsBackend for PartialGpuBackend {
                     hilbert_transform_gpu_compute::<WgpuRuntime>(&client, data_slice, lp_period)
                 }
             };
-            
+
             Ok((
                 PyArray1::from_vec(py, real_vec).to_owned().into(),
-                PyArray1::from_vec(py, imag_vec).to_owned().into()
+                PyArray1::from_vec(py, imag_vec).to_owned().into(),
             ))
         }
         #[cfg(not(feature = "gpu"))]

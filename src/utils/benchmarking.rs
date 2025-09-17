@@ -4,7 +4,7 @@
 //! indicator computations, eliminating code duplication across backends.
 
 /// Benchmark VPIN computation using CPU kernel
-/// 
+///
 /// This function encapsulates the CPU VPIN kernel call for benchmarking purposes.
 /// It's used by the adaptive backend for performance calibration and by the GPU
 /// backend as a fallback when GPU features are not available.

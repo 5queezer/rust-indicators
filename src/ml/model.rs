@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use numpy::{PyArray1, PyReadonlyArray1};
+use pyo3::prelude::*;
 
 /// Lightweight ML model for meta-labeling
 #[pyclass]
@@ -61,6 +61,8 @@ impl RustMLModel {
 
     /// Get model weights for inspection
     fn get_weights(&self, py: Python) -> Py<PyArray1<f64>> {
-        PyArray1::from_vec(py, self.weights.clone()).to_owned().into()
+        PyArray1::from_vec(py, self.weights.clone())
+            .to_owned()
+            .into()
     }
 }

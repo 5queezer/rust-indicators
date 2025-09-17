@@ -1,7 +1,7 @@
-use pyo3::prelude::*;
-use numpy::{PyArray1, PyReadonlyArray1};
 use crate::core::traits::IndicatorsBackend;
 use crate::utils::backend_selection;
+use numpy::{PyArray1, PyReadonlyArray1};
+use pyo3::prelude::*;
 
 #[pyclass]
 pub struct RustTA {
@@ -24,20 +24,37 @@ impl RustTA {
     }
 
     /// Which device is in use ("cpu" or "gpu")
-    fn device(&self) -> &str { self.device }
+    fn device(&self) -> &str {
+        self.device
+    }
 
     /// RSI calculation - optimized implementation
-    fn rsi(&self, py: Python, prices: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn rsi(
+        &self,
+        py: Python,
+        prices: PyReadonlyArray1<f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.rsi(py, prices, period)
     }
 
     /// Exponential Moving Average - ultra-fast implementation
-    fn ema(&self, py: Python, prices: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn ema(
+        &self,
+        py: Python,
+        prices: PyReadonlyArray1<f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.ema(py, prices, period)
     }
 
     /// Simple Moving Average
-    fn sma(&self, py: Python, values: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn sma(
+        &self,
+        py: Python,
+        values: PyReadonlyArray1<f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.sma(py, values, period)
     }
 
@@ -100,7 +117,12 @@ impl RustTA {
     }
 
     /// Ehlers SuperSmoother Filter - superior smoothing with minimal lag
-    fn supersmoother(&self, py: Python, data: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    fn supersmoother(
+        &self,
+        py: Python,
+        data: PyReadonlyArray1<f64>,
+        period: usize,
+    ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.supersmoother(py, data, period)
     }
 

@@ -72,6 +72,8 @@
 //! The CPU backend leverages the [`cpu_method!`] macro to eliminate boilerplate:
 //!
 //! ```rust
+//! use rust_indicators::cpu_method;
+//!
 //! cpu_method!(rsi, rsi_cpu, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
 //! ```
 //!
@@ -85,6 +87,7 @@
 //! All array operations use the [`extract_safe!`] macro for robust error handling:
 //!
 //! ```rust
+//! use rust_indicators::extract_safe;
 //! let buy_slice = extract_safe!(buy_array, "buy_volumes");
 //! ```
 //!
@@ -143,7 +146,7 @@ use pyo3::prelude::*;
 /// multiple threads without synchronization concerns.
 pub struct CpuBackend;
 
-impl CpuBackend { 
+impl CpuBackend {
     /// Creates a new CPU backend instance
     ///
     /// The CPU backend is always available and requires no initialization.
@@ -161,9 +164,9 @@ impl CpuBackend {
     /// let backend = CpuBackend::new();
     /// // Backend is immediately ready for use
     /// ```
-    pub fn new() -> Self { 
-        CpuBackend 
-    } 
+    pub fn new() -> Self {
+        CpuBackend
+    }
 }
 
 impl IndicatorsBackend for CpuBackend {
@@ -174,7 +177,7 @@ impl IndicatorsBackend for CpuBackend {
     cpu_method!(atr, atr_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(williams_r, williams_r_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(cci, cci_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
-    
+
     /// Calculate Volume-synchronized Probability of Informed Trading (VPIN)
     ///
     /// VPIN is a volume-based indicator that measures the probability of informed trading
@@ -208,16 +211,17 @@ impl IndicatorsBackend for CpuBackend {
         py: Python<'py>,
         buy_volumes: PyReadonlyArray1<'py, f64>,
         sell_volumes: PyReadonlyArray1<'py, f64>,
-        window: usize
+        window: usize,
     ) -> PyResult<Py<PyArray1<f64>>> {
         let buy_array = buy_volumes.as_array();
         let sell_array = sell_volumes.as_array();
         let buy_slice = extract_safe!(buy_array, "buy_volumes");
         let sell_slice = extract_safe!(sell_array, "sell_volumes");
-        let results = crate::backends::cpu::implementations::vpin_cpu_kernel(buy_slice, sell_slice, window);
+        let results =
+            crate::backends::cpu::implementations::vpin_cpu_kernel(buy_slice, sell_slice, window);
         Ok(PyArray1::from_vec(py, results).to_owned().into())
     }
-    
+
     cpu_method!(supersmoother, supersmoother_cpu, (data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(hilbert_transform, hilbert_transform_cpu, (data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>);
 }

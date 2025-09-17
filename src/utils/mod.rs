@@ -3,10 +3,10 @@
 //! This module contains utilities for testing, benchmarking,
 //! backend selection, and other development support functions.
 
-pub mod testing;
 pub mod backend_selection;
-pub mod macros;
 pub mod benchmarking;
+pub mod macros;
+pub mod testing;
 
 // Re-export the delegation macro for easy access
 // Note: #[macro_export] exports macros at crate root, not module level
