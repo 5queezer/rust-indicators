@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "rust_indicators"
-version = "0.1.1"
+version = "0.1.2"
 description = "High-performance technical analysis indicators for FreqTrade with optional GPU acceleration"
 authors = [{name = "Taoist Quant", email = "quant@example.com"}]
 license = {text = "MIT"}

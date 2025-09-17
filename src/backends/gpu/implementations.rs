@@ -257,18 +257,7 @@ pub fn hilbert_transform_gpu_compute<R: Runtime>(
     let temp_f64: Vec<f64> = temp_f32.iter().map(|&x| x as f64).collect();
     
     // Apply SuperSmoother on CPU (sequential dependencies)
-    let roofed_data = {
-        let mut result = vec![0.0; len];
-        if lp_period >= 2 && len >= 3 {
-            let (c1, c2, c3) = crate::backends::cpu::implementations::calculate_supersmoother_coeffs(lp_period as f64);
-            for i in 2..len {
-                result[i] = c1 * (temp_f64[i] + temp_f64[i - 1]) / 2.0
-                           + c2 * result[i - 1]
-                           + c3 * result[i - 2];
-            }
-        }
-        result
-    };
+    let roofed_data = crate::backends::cpu::implementations::apply_supersmoother(&temp_f64, lp_period as f64);
     
     // Step 3: Apply AGC normalization (CPU fallback due to sequential dependencies)
     let real_component = crate::backends::cpu::implementations::apply_agc_normalization_cpu(&roofed_data, 0.991);
@@ -297,18 +286,7 @@ pub fn hilbert_transform_gpu_compute<R: Runtime>(
     let agc_quadrature = crate::backends::cpu::implementations::apply_agc_normalization_cpu(&quadrature_f64, 0.991);
     
     // Apply final SuperSmoother to get imaginary component
-    let imaginary_component = {
-        let mut result = vec![0.0; len];
-        if len >= 3 {
-            let (c1, c2, c3) = crate::backends::cpu::implementations::calculate_supersmoother_coeffs(10.0);
-            for i in 2..len {
-                result[i] = c1 * (agc_quadrature[i] + agc_quadrature[i - 1]) / 2.0
-                           + c2 * result[i - 1]
-                           + c3 * result[i - 2];
-            }
-        }
-        result
-    };
+    let imaginary_component = crate::backends::cpu::implementations::apply_supersmoother(&agc_quadrature, 10.0);
     
     (real_component, imaginary_component)
 }
@@ -334,14 +312,7 @@ pub fn hilbert_transform_cuda_compute(
     lp_period: usize,
 ) -> (Vec<f64>, Vec<f64>) {
     // Fallback to CPU when CUDA feature is not enabled
-    let data_array = numpy::PyReadonlyArray1::from_slice(pyo3::Python::acquire_gil().python(), data).unwrap();
-    match crate::backends::cpu::implementations::hilbert_transform_cpu(pyo3::Python::acquire_gil().python(), data_array, lp_period) {
-        Ok((real, imag)) => {
-            // This is a simplified fallback - in practice, you'd need proper conversion
-            (vec![0.0; data.len()], vec![0.0; data.len()])
-        }
-        Err(_) => (vec![0.0; data.len()], vec![0.0; data.len()])
-    }
+    crate::backends::cpu::implementations::hilbert_transform_core(data, lp_period)
 }
 
 #[cfg(not(feature = "gpu"))]
@@ -351,12 +322,5 @@ pub fn hilbert_transform_gpu_compute<R>(
     lp_period: usize,
 ) -> (Vec<f64>, Vec<f64>) {
     // Fallback to CPU when GPU feature is not enabled
-    let data_array = numpy::PyReadonlyArray1::from_slice(pyo3::Python::acquire_gil().python(), data).unwrap();
-    match crate::backends::cpu::implementations::hilbert_transform_cpu(pyo3::Python::acquire_gil().python(), data_array, lp_period) {
-        Ok((real, imag)) => {
-            // This is a simplified fallback - in practice, you'd need proper conversion
-            (vec![0.0; data.len()], vec![0.0; data.len()])
-        }
-        Err(_) => (vec![0.0; data.len()], vec![0.0; data.len()])
-    }
+    crate::backends::cpu::implementations::hilbert_transform_core(data, lp_period)
 }

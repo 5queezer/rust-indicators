@@ -297,30 +297,42 @@ pub fn calculate_quadrature_cpu(real_component: &[f64]) -> Vec<f64> {
     quadrature
 }
 
-/// Main Hilbert Transform CPU implementation
-pub fn hilbert_transform_cpu<'py>(
-    py: Python<'py>,
-    data: PyReadonlyArray1<'py, f64>,
-    lp_period: usize
-) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-    let data_array = data.as_array();
-    let data_slice = data_array.as_slice().unwrap();
-    let len = data_slice.len();
+/// Apply SuperSmoother filter to data with given period
+pub fn apply_supersmoother(data: &[f64], period: f64) -> Vec<f64> {
+    let len = data.len();
+    let mut result = vec![0.0; len];
+    
+    if period < 2.0 || len < 3 {
+        return result;
+    }
+    
+    let (c1, c2, c3) = calculate_supersmoother_coeffs(period);
+    
+    // Apply SuperSmoother starting from index 2
+    for i in 2..len {
+        result[i] = c1 * (data[i] + data[i - 1]) / 2.0
+                   + c2 * result[i - 1]
+                   + c3 * result[i - 2];
+    }
+    
+    result
+}
+
+/// Core Hilbert Transform implementation - single source of truth
+pub fn hilbert_transform_core(data: &[f64], lp_period: usize) -> (Vec<f64>, Vec<f64>) {
+    let len = data.len();
     
     // Initialize output arrays
     let mut real_component = vec![0.0; len];
-    let mut imaginary_component = vec![0.0; len];
+    let imaginary_component;
     
     // Early return for insufficient data
     if len < 50 {  // Need at least 48 + a few extra for the algorithm
-        return Ok((
-            PyArray1::from_vec(py, real_component).to_owned().into(),
-            PyArray1::from_vec(py, imaginary_component).to_owned().into()
-        ));
+        return (real_component, vec![0.0; len]);
     }
     
     // Step 1: Apply roofing filter (48-period high-pass + lp_period low-pass)
-    let roofed_data = roofing_filter_cpu(data_slice, 48.0, lp_period);
+    let roofed_data = roofing_filter_cpu(data, 48.0, lp_period);
     
     // Step 2: Apply AGC normalization to get real component
     real_component = apply_agc_normalization_cpu(&roofed_data, 0.991);
@@ -332,16 +344,21 @@ pub fn hilbert_transform_cpu<'py>(
     let agc_quadrature = apply_agc_normalization_cpu(&quadrature, 0.991);
     
     // Step 5: Apply SuperSmoother to AGC'd quadrature (imaginary component)
-    if len >= 3 {
-        let (c1, c2, c3) = calculate_supersmoother_coeffs(10.0); // Fixed 10-period SuperSmoother
-        
-        // Apply SuperSmoother starting from index 2
-        for i in 2..len {
-            imaginary_component[i] = c1 * (agc_quadrature[i] + agc_quadrature[i - 1]) / 2.0
-                                   + c2 * imaginary_component[i - 1]
-                                   + c3 * imaginary_component[i - 2];
-        }
-    }
+    imaginary_component = apply_supersmoother(&agc_quadrature, 10.0);
+    
+    (real_component, imaginary_component)
+}
+
+/// Main Hilbert Transform CPU implementation
+pub fn hilbert_transform_cpu<'py>(
+    py: Python<'py>,
+    data: PyReadonlyArray1<'py, f64>,
+    lp_period: usize
+) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+    let data_array = data.as_array();
+    let data_slice = data_array.as_slice().unwrap();
+    
+    let (real_component, imaginary_component) = hilbert_transform_core(data_slice, lp_period);
     
     Ok((
         PyArray1::from_vec(py, real_component).to_owned().into(),

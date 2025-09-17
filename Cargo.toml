@@ -1,7 +1,7 @@
 # File: rust_indicators/Cargo.toml
 [package]
 name = "rust_indicators"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [lib]
@@ -54,3 +54,9 @@ debug = true
 name = "backend_selection_tests"
 harness = true
 test = true
+
+[package.metadata.docs.rs]
+rustdoc-args = [
+    "--html-in-header",
+    ".cargo/registry/src/github.com-1ecc6299db9ec823/katex-doc-0.1.0/katex.html",
+]

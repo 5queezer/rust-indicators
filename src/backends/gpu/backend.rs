@@ -132,8 +132,32 @@ impl IndicatorsBackend for PartialGpuBackend {
     
     fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize)
         -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-        // For now, delegate to CPU backend since GPU implementation has complex dependencies
-        // TODO: Implement proper GPU acceleration for parallelizable parts
-        self.cpu_backend.hilbert_transform(py, data, lp_period)
+        let data_array = data.as_array();
+        let data_slice = data_array.as_slice().unwrap();
+        
+        let (real_vec, imag_vec) = {
+            #[cfg(feature = "cuda")]
+            {
+                // Use CUDA computation
+                hilbert_transform_cuda_compute(data_slice, lp_period)
+            }
+            #[cfg(all(feature = "gpu", not(feature = "cuda")))]
+            {
+                // Try GPU computation if CUDA is not available
+                let device = WgpuDevice::default();
+                let client = WgpuRuntime::client(&device);
+                hilbert_transform_gpu_compute::<WgpuRuntime>(&client, data_slice, lp_period)
+            }
+            #[cfg(not(feature = "gpu"))]
+            {
+                // Fallback to CPU when no GPU features are enabled
+                return self.cpu_backend.hilbert_transform(py, data, lp_period);
+            }
+        };
+        
+        Ok((
+            PyArray1::from_vec(py, real_vec).to_owned().into(),
+            PyArray1::from_vec(py, imag_vec).to_owned().into()
+        ))
     }
 }
