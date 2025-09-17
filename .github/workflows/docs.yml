@@ -1,8 +1,9 @@
-name: Deploy Rust docs to GitHub Pages
+# Deploy Rust cargo doc to GitHub Pages
+name: Deploy Rust docs to Pages
 
 on:
   push:
-    branches: [ master ]
+    branches: ["master"]
   workflow_dispatch:
 
 permissions:
@@ -10,16 +11,27 @@ permissions:
   pages: write
   id-token: write
 
+# Set this if you want a specific crate as the landing page (optional)
+# env:
+#   CRATE_NAME: rust_indicators
+
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -35,9 +47,14 @@ jobs:
         run: |
           set -euo pipefail
           cargo doc --workspace --all-features --no-deps
+
+          # Determine crate name if not provided via env
           CRATE_NAME="${CRATE_NAME:-$(grep -m1 -E '^\s*name\s*=\s*"' Cargo.toml | sed -E 's/.*name\s*=\s*"([^"]+)".*/\1/')}"
+
           mkdir -p _site
           cp -r target/doc/* _site/
+
+          # Create a top-level index.html redirect if needed
           if [ ! -f _site/index.html ] && [ -n "$CRATE_NAME" ]; then
             printf '%s\n' '<!doctype html><meta charset="utf-8">' \
               '<meta http-equiv="refresh" content="0; url=./'"$CRATE_NAME"'/">' \
@@ -45,23 +62,16 @@ jobs:
               > _site/index.html
           fi
 
-      - name: Configure Pages (enable if needed)
+      - name: Setup Pages (enable if not already)
         uses: actions/configure-pages@v5
         with:
-          enablement: true   # <— this creates/enables the Pages site for this repo
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./_site
+          path: _site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
