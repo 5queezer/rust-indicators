@@ -40,23 +40,21 @@ jobs:
       # Build docs (workspace: all members; otherwise drop --workspace)
       - name: Build docs
         run: |
+          set -euo pipefail
           cargo doc --workspace --all-features --no-deps
-          # Create a friendly index.html that redirects to your crate docs.
-          # Set the crate/package you want as the landing page:
-          CRATE_NAME="${{ env.CRATE_NAME }}"
-          if [ -z "$CRATE_NAME" ]; then
-            # fallback: try to infer from the root package name in Cargo.toml
-            CRATE_NAME=$(grep -m1 -E '^\s*name\s*=\s*"' Cargo.toml | head -1 | sed -E 's/.*name\s*=\s*"([^"]+)".*/\1/')
-          fi
-          mkdir -p ./_site
-          cp -r target/doc/* ./_site/
-          # If rustdoc didn't produce a top-level index, make one that redirects to your crate
-          if [ ! -f ./_site/index.html ] && [ -n "$CRATE_NAME" ]; then
-            cat > ./_site/index.html <<EOF
-            <!doctype html><meta charset="utf-8">
-            <meta http-equiv="refresh" content="0; url=./$CRATE_NAME/">
-            <link rel="canonical" href="./$CRATE_NAME/">
-            EOF
+          
+          # Determine crate name (or set env.CRATE_NAME at the top of the workflow)
+          CRATE_NAME="${CRATE_NAME:-$(grep -m1 -E '^\s*name\s*=\s*"' Cargo.toml | sed -E 's/.*name\s*=\s*"([^"]+)".*/\1/')}"
+          
+          mkdir -p _site
+          cp -r target/doc/* _site/
+          
+          # If there is no top-level index.html, create a redirect to the crate’s docs
+          if [ ! -f _site/index.html ] && [ -n "$CRATE_NAME" ]; then
+            printf '%s\n' '<!doctype html><meta charset="utf-8">' \
+              '<meta http-equiv="refresh" content="0; url=./'"$CRATE_NAME"'/">' \
+              '<link rel="canonical" href="./'"$CRATE_NAME"'/">' \
+              > _site/index.html
           fi
 
       - name: Configure Pages
