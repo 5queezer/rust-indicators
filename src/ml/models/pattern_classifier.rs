@@ -231,7 +231,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, ndarray};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
 use std::collections::HashMap;
 
 use crate::extract_safe;
@@ -288,13 +288,17 @@ impl PatternClassifier {
     }
 
     /// Train the pattern ensemble model
+    #[pyo3(signature = (pattern_features, price_features, y, pattern_names))]
     fn train_pattern_ensemble(
         &mut self,
-        pattern_features: PyReadonlyArray2<f32>,
-        price_features: PyReadonlyArray2<f32>,
-        y: PyReadonlyArray1<i32>,
+        pattern_features: &Bound<'_, PyArray2<f32>>,
+        price_features: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
         pattern_names: Vec<String>,
     ) -> PyResult<HashMap<String, f32>> {
+        let pattern_features = pattern_features.readonly();
+        let price_features = price_features.readonly();
+        let y = y.readonly();
         let pattern_array = pattern_features.as_array();
         let _price_array = price_features.as_array();
         let y_array = y.as_array();
@@ -363,12 +367,14 @@ impl PatternClassifier {
     }
 
     /// Make ensemble prediction with pattern contributions
+    #[pyo3(signature = (pattern_features, _price_features))]
     fn predict_pattern_ensemble(
         &self,
         py: Python,
-        pattern_features: PyReadonlyArray1<f32>,
-        _price_features: PyReadonlyArray1<f32>,
+        pattern_features: &Bound<'_, PyArray1<f32>>,
+        _price_features: &Bound<'_, PyArray1<f32>>,
     ) -> PyResult<(i32, f32, Py<PyArray1<f32>>)> {
+        let pattern_features = pattern_features.readonly();
         if !self.trained {
             return Err(PyValueError::new_err("Model not trained"));
         }

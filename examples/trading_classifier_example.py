@@ -15,11 +15,11 @@ def generate_trading_data(n_samples=1000):
     np.random.seed(42)
     
     # Generate synthetic price series
-    returns = np.random.normal(0.0005, 0.015, n_samples)
-    prices = 100 * np.exp(np.cumsum(returns))
+    returns = np.random.normal(0.0005, 0.015, n_samples).astype(np.float32)
+    prices = (100 * np.exp(np.cumsum(returns))).astype(np.float32)
     
     # Generate trading features (technical indicators)
-    features = np.zeros((n_samples, 7))
+    features = np.zeros((n_samples, 7), dtype=np.float32)
     
     # Feature 1: RSI-like momentum indicator
     features[:, 0] = np.random.normal(50, 20, n_samples)  # RSI values
@@ -28,7 +28,7 @@ def generate_trading_data(n_samples=1000):
     features[:, 1] = np.random.normal(1.0, 0.1, n_samples)  # Price/MA ratio
     
     # Feature 3: Volatility measure
-    volatility = np.abs(np.random.normal(0.02, 0.01, n_samples))
+    volatility = np.abs(np.random.normal(0.02, 0.01, n_samples)).astype(np.float32)
     features[:, 2] = volatility
     
     # Feature 4: Volume indicator

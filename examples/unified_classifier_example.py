@@ -16,18 +16,18 @@ def generate_unified_data(n_samples=1000):
     np.random.seed(42)
     
     # Generate synthetic price series
-    returns = np.random.normal(0.0005, 0.015, n_samples)
-    prices = 100 * np.exp(np.cumsum(returns))
+    returns = np.random.normal(0.0005, 0.015, n_samples).astype(np.float32)
+    prices = (100 * np.exp(np.cumsum(returns))).astype(np.float32)
     
     # Create OHLC data
-    opens = prices * (1 + np.random.normal(0, 0.001, n_samples))
-    highs = np.maximum(opens, prices) * (1 + np.abs(np.random.normal(0, 0.005, n_samples)))
-    lows = np.minimum(opens, prices) * (1 - np.abs(np.random.normal(0, 0.005, n_samples)))
-    closes = prices
+    opens = (prices * (1 + np.random.normal(0, 0.001, n_samples))).astype(np.float32)
+    highs = (np.maximum(opens, prices) * (1 + np.abs(np.random.normal(0, 0.005, n_samples)))).astype(np.float32)
+    lows = (np.minimum(opens, prices) * (1 - np.abs(np.random.normal(0, 0.005, n_samples)))).astype(np.float32)
+    closes = prices.astype(np.float32)
     
     # Generate trading features (7 features)
-    trading_features = np.zeros((n_samples, 7))
-    volatility = np.abs(np.random.normal(0.02, 0.01, n_samples))
+    trading_features = np.zeros((n_samples, 7), dtype=np.float32)
+    volatility = np.abs(np.random.normal(0.02, 0.01, n_samples)).astype(np.float32)
     
     trading_features[:, 0] = np.random.normal(50, 20, n_samples)  # RSI
     trading_features[:, 1] = np.random.normal(1.0, 0.1, n_samples)  # MA ratio
@@ -48,7 +48,7 @@ def generate_unified_data(n_samples=1000):
     # Generate pattern signals (5 patterns)
     pattern_names = ["doji", "hammer", "engulfing", "shooting_star", "spinning_top"]
     n_patterns = len(pattern_names)
-    pattern_signals = np.zeros((n_samples, n_patterns))
+    pattern_signals = np.zeros((n_samples, n_patterns), dtype=np.float32)
     
     # Create pattern signals with some predictive power
     future_returns = np.roll(returns, -5)
@@ -62,7 +62,7 @@ def generate_unified_data(n_samples=1000):
     
     # Generate labels based on future returns
     labels = np.where(future_returns > 0.015, 2,  # Buy
-                     np.where(future_returns < -0.015, 0, 1))  # Sell, Hold
+                     np.where(future_returns < -0.015, 0, 1)).astype(np.int32)  # Sell, Hold
     
     return {
         'opens': opens,
@@ -152,7 +152,7 @@ def mode_switching_example():
     n_features = data['unified_features'].shape[1]
     
     # Initialize classifier
-    classifier = UnifiedClassifier(n_features=n_features)
+    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid)
     
     # Prepare data
     split_idx = 800
@@ -310,7 +310,7 @@ def label_generation_comparison():
     print("\n=== Label Generation Comparison ===")
     
     data = generate_unified_data(800)
-    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1])
+    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid)
     
     # Generate triple barrier labels
     print("Generating triple barrier labels...")
@@ -363,7 +363,7 @@ def cross_validation_comparison():
     print("\n=== Cross-Validation Comparison ===")
     
     data = generate_unified_data(1000)
-    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1])
+    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid)
     
     n_samples = 800
     n_splits = 3

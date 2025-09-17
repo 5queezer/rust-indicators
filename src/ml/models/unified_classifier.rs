@@ -183,7 +183,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, ndarray};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ToPyArray, ndarray};
 use std::collections::HashMap;
 
 use crate::extract_safe;
@@ -304,12 +304,15 @@ impl UnifiedClassifier {
     }
 
     /// Train the unified model in the current mode
+    #[pyo3(signature = (X, y, learning_rate))]
     fn train_unified(
         &mut self,
-        X: PyReadonlyArray2<f32>,
-        y: PyReadonlyArray1<i32>,
+        X: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
+        let X = X.readonly();
+        let y = y.readonly();
         let X_array = X.as_array();
         let y_array = y.as_array();
         let (n_samples, n_features) = X_array.dim();
@@ -337,10 +340,11 @@ impl UnifiedClassifier {
     }
 
     /// Switch to pattern mode and train
+    #[pyo3(signature = (X, y, learning_rate))]
     fn train_pattern_mode_explicit(
         &mut self,
-        X: PyReadonlyArray2<f32>,
-        y: PyReadonlyArray1<i32>,
+        X: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Pattern;
@@ -348,10 +352,11 @@ impl UnifiedClassifier {
     }
 
     /// Switch to trading mode and train
+    #[pyo3(signature = (X, y, learning_rate))]
     fn train_trading_mode_explicit(
         &mut self,
-        X: PyReadonlyArray2<f32>,
-        y: PyReadonlyArray1<i32>,
+        X: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Trading;
@@ -359,10 +364,11 @@ impl UnifiedClassifier {
     }
 
     /// Switch to hybrid mode and train
+    #[pyo3(signature = (X, y, learning_rate))]
     fn train_hybrid_mode_explicit(
         &mut self,
-        X: PyReadonlyArray2<f32>,
-        y: PyReadonlyArray1<i32>,
+        X: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Hybrid;
@@ -397,6 +403,68 @@ impl UnifiedClassifier {
     /// Check if model is trained
     fn is_trained(&self) -> bool {
         self.trained
+    }
+
+    /// Make prediction with confidence for a single sample
+    fn predict_with_confidence(
+        &self,
+        py: Python,
+        features: PyReadonlyArray1<f32>,
+    ) -> PyResult<(i32, f32)> {
+        <Self as MLBackend>::predict_with_confidence(self, py, features)
+    }
+
+    /// Create triple barrier labels
+    fn create_triple_barrier_labels(
+        &self,
+        py: Python,
+        prices: PyReadonlyArray1<f32>,
+        volatility: PyReadonlyArray1<f32>,
+        profit_mult: f32,
+        stop_mult: f32,
+        max_hold: usize,
+    ) -> PyResult<Py<PyArray1<i32>>> {
+        <Self as LabelGenerator>::create_triple_barrier_labels(
+            self, py, prices, volatility, profit_mult, stop_mult, max_hold
+        )
+    }
+
+    /// Create pattern labels
+    fn create_pattern_labels(
+        &self,
+        py: Python,
+        open_prices: PyReadonlyArray1<f32>,
+        high_prices: PyReadonlyArray1<f32>,
+        low_prices: PyReadonlyArray1<f32>,
+        close_prices: PyReadonlyArray1<f32>,
+        future_periods: usize,
+        profit_threshold: f32,
+        stop_threshold: f32,
+    ) -> PyResult<Py<PyArray1<i32>>> {
+        <Self as LabelGenerator>::create_pattern_labels(
+            self, py, open_prices, high_prices, low_prices, close_prices,
+            future_periods, profit_threshold, stop_threshold
+        )
+    }
+
+    /// Create purged cross-validation splits
+    fn create_purged_cv_splits(
+        &self,
+        n_samples: usize,
+        n_splits: usize,
+        embargo_pct: f32,
+    ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
+        <Self as CrossValidator>::create_purged_cv_splits(self, n_samples, n_splits, embargo_pct)
+    }
+
+    /// Create pattern-aware cross-validation splits
+    fn create_pattern_aware_cv_splits(
+        &self,
+        n_samples: usize,
+        n_splits: usize,
+        pattern_duration: usize,
+    ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
+        <Self as CrossValidator>::create_pattern_aware_cv_splits(self, n_samples, n_splits, pattern_duration)
     }
 }
 
@@ -724,11 +792,14 @@ impl UnifiedClassifier {
 impl MLBackend for UnifiedClassifier {
     fn train_model<'py>(
         &mut self,
-        _py: Python<'py>,
+        py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
     ) -> PyResult<HashMap<String, f32>> {
-        self.train_unified(features, labels, 0.01)
+        // Convert PyReadonlyArray to Bound for the new signature
+        let features_bound = features.as_array().to_pyarray(py);
+        let labels_bound = labels.as_array().to_pyarray(py);
+        self.train_unified(&features_bound, &labels_bound, 0.01)
     }
 
     fn predict_with_confidence<'py>(

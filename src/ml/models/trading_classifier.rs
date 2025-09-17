@@ -315,7 +315,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ToPyArray, ndarray};
 use std::collections::HashMap;
 
 use crate::extract_safe;
@@ -375,6 +375,7 @@ impl TradingClassifier {
     }
 
     /// Train the scientific trading model
+    #[pyo3(signature = (X, y, learning_rate))]
     fn train_scientific(
         &mut self,
         X: PyReadonlyArray2<f32>,
@@ -479,6 +480,40 @@ impl TradingClassifier {
     /// Get current embargo percentage
     fn get_embargo_pct(&self) -> f32 {
         self.embargo_pct
+    }
+
+    /// Create triple barrier labels for trading signals
+    fn create_triple_barrier_labels(
+        &self,
+        py: Python,
+        prices: PyReadonlyArray1<f32>,
+        volatility: PyReadonlyArray1<f32>,
+        profit_mult: f32,
+        stop_mult: f32,
+        max_hold: usize,
+    ) -> PyResult<Py<PyArray1<i32>>> {
+        // Delegate to trait implementation
+        LabelGenerator::create_triple_barrier_labels(
+            self, py, prices, volatility, profit_mult, stop_mult, max_hold
+        )
+    }
+
+    /// Make prediction with confidence score
+    fn predict_with_confidence(&self, py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
+        if !self.trained {
+            return Err(PyValueError::new_err("Model not trained"));
+        }
+
+        let features_array = features.as_array();
+        let feats = extract_safe!(features_array, "features");
+
+        if feats.len() != self.n_features {
+            return Err(PyValueError::new_err(
+                format!("Expected {} features, got {}", self.n_features, feats.len())
+            ));
+        }
+
+        self.predict_sample(feats)
     }
 }
 
@@ -592,7 +627,7 @@ impl TradingClassifier {
 impl MLBackend for TradingClassifier {
     fn train_model<'py>(
         &mut self,
-        _py: Python<'py>,
+        py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
     ) -> PyResult<HashMap<String, f32>> {
@@ -621,7 +656,7 @@ impl MLBackend for TradingClassifier {
     }
 
     fn get_feature_importance<'py>(&self, py: Python<'py>) -> PyResult<Py<PyArray1<f32>>> {
-        self.get_feature_importance(py)
+        Ok(PyArray1::from_vec(py, self.feature_importance.clone()).into())
     }
 
     fn is_trained(&self) -> bool {
