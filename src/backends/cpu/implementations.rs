@@ -202,3 +202,149 @@ pub fn vpin_cpu_kernel(
 
     output
 }
+
+/// Calculate two-pole high-pass filter coefficients
+pub fn calculate_highpass_coeffs(period: f64) -> (f64, f64, f64) {
+    let alpha1 = (2.0 * PI / period).cos();
+    let beta1 = (2.0 * PI / period).sin();
+    let gamma1 = 1.0 / (alpha1 + beta1);
+    let alpha2 = gamma1 * alpha1;
+    let beta2 = gamma1 * beta1;
+    (alpha2, beta2, gamma1)
+}
+
+/// Apply two-pole high-pass filter (Ehlers roofing filter step 1)
+pub fn roofing_highpass_cpu(data: &[f64], period: f64) -> Vec<f64> {
+    let len = data.len();
+    let mut result = vec![0.0; len];
+    
+    if len < 3 {
+        return result;
+    }
+    
+    let (alpha, beta, _gamma) = calculate_highpass_coeffs(period);
+    
+    // Initialize first two values
+    result[0] = 0.0;
+    result[1] = 0.0;
+    
+    // Apply high-pass filter starting from index 2
+    for i in 2..len {
+        result[i] = (1.0 - alpha / 2.0) * (data[i] - data[i - 1])
+                   + (1.0 - alpha) * result[i - 1]
+                   - (alpha - beta) * result[i - 2];
+    }
+    
+    result
+}
+
+/// Apply roofing filter: high-pass followed by SuperSmoother low-pass
+pub fn roofing_filter_cpu(data: &[f64], hp_period: f64, lp_period: usize) -> Vec<f64> {
+    // Step 1: Apply high-pass filter
+    let highpassed = roofing_highpass_cpu(data, hp_period);
+    
+    // Step 2: Apply SuperSmoother low-pass filter
+    let len = highpassed.len();
+    let mut result = vec![0.0; len];
+    
+    if lp_period < 2 || len < 3 {
+        return result;
+    }
+    
+    let (c1, c2, c3) = calculate_supersmoother_coeffs(lp_period as f64);
+    
+    // Apply SuperSmoother starting from index 2
+    for i in 2..len {
+        result[i] = c1 * (highpassed[i] + highpassed[i - 1]) / 2.0
+                   + c2 * result[i - 1]
+                   + c3 * result[i - 2];
+    }
+    
+    result
+}
+
+/// Apply Automatic Gain Control (AGC) normalization
+pub fn apply_agc_normalization_cpu(data: &[f64], decay_factor: f64) -> Vec<f64> {
+    let len = data.len();
+    let mut result = vec![0.0; len];
+    let mut peak = 0.0;
+    
+    for i in 0..len {
+        // Update peak with decay
+        peak = decay_factor * peak + (1.0 - decay_factor) * data[i].abs();
+        
+        // Normalize by peak, avoiding division by zero
+        if peak > 1e-10 {
+            result[i] = data[i] / peak;
+        } else {
+            result[i] = 0.0;
+        }
+    }
+    
+    result
+}
+
+/// Calculate quadrature component using one-bar difference method
+pub fn calculate_quadrature_cpu(real_component: &[f64]) -> Vec<f64> {
+    let len = real_component.len();
+    let mut quadrature = vec![0.0; len];
+    
+    // One-bar difference: Q[i] = Real[i] - Real[i-1]
+    for i in 1..len {
+        quadrature[i] = real_component[i] - real_component[i - 1];
+    }
+    
+    quadrature
+}
+
+/// Main Hilbert Transform CPU implementation
+pub fn hilbert_transform_cpu<'py>(
+    py: Python<'py>,
+    data: PyReadonlyArray1<'py, f64>,
+    lp_period: usize
+) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+    let data_array = data.as_array();
+    let data_slice = data_array.as_slice().unwrap();
+    let len = data_slice.len();
+    
+    // Initialize output arrays
+    let mut real_component = vec![0.0; len];
+    let mut imaginary_component = vec![0.0; len];
+    
+    // Early return for insufficient data
+    if len < 50 {  // Need at least 48 + a few extra for the algorithm
+        return Ok((
+            PyArray1::from_vec(py, real_component).to_owned().into(),
+            PyArray1::from_vec(py, imaginary_component).to_owned().into()
+        ));
+    }
+    
+    // Step 1: Apply roofing filter (48-period high-pass + lp_period low-pass)
+    let roofed_data = roofing_filter_cpu(data_slice, 48.0, lp_period);
+    
+    // Step 2: Apply AGC normalization to get real component
+    real_component = apply_agc_normalization_cpu(&roofed_data, 0.991);
+    
+    // Step 3: Calculate quadrature using one-bar difference
+    let quadrature = calculate_quadrature_cpu(&real_component);
+    
+    // Step 4: Apply AGC to quadrature
+    let agc_quadrature = apply_agc_normalization_cpu(&quadrature, 0.991);
+    
+    // Step 5: Apply SuperSmoother to AGC'd quadrature (imaginary component)
+    if len >= 3 {
+        let (c1, c2, c3) = calculate_supersmoother_coeffs(10.0); // Fixed 10-period SuperSmoother
+        
+        // Apply SuperSmoother starting from index 2
+        for i in 2..len {
+            imaginary_component[i] = c1 * (agc_quadrature[i] + agc_quadrature[i - 1]) / 2.0
+                                   + c2 * imaginary_component[i - 1]
+                                   + c3 * imaginary_component[i - 2];
+        }
+    }
+    
+    Ok((
+        PyArray1::from_vec(py, real_component).to_owned().into(),
+        PyArray1::from_vec(py, imaginary_component).to_owned().into()
+    ))
+}

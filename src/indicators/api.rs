@@ -103,4 +103,26 @@ impl RustTA {
     fn supersmoother(&self, py: Python, data: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.supersmoother(py, data, period)
     }
+
+    /// Ehlers Hilbert Transform - produces complex-valued signal for instantaneous amplitude and phase
+    ///
+    /// Returns tuple of (real_component, imaginary_component)
+    ///
+    /// # Parameters
+    /// - data: Input price data
+    /// - lp_period: Low-pass filter period for roofing filter (commonly 10, 14, or 20)
+    ///
+    /// # Algorithm
+    /// 1. Roofing filter: 48-period high-pass + lp_period low-pass
+    /// 2. AGC normalization for real component
+    /// 3. Quadrature generation via one-bar difference
+    /// 4. SuperSmoother applied to imaginary component
+    fn hilbert_transform(
+        &self,
+        py: Python,
+        data: PyReadonlyArray1<f64>,
+        lp_period: usize,
+    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+        self.backend.hilbert_transform(py, data, lp_period)
+    }
 }

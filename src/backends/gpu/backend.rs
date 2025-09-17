@@ -12,7 +12,9 @@ use cubecl::Runtime;
 #[cfg(all(feature = "gpu", not(feature = "cuda")))]
 use crate::backends::gpu::implementations::vpin_gpu_compute;
 #[cfg(feature = "cuda")]
-use crate::backends::gpu::implementations::vpin_cuda_compute;
+use crate::backends::gpu::implementations::{vpin_cuda_compute, hilbert_transform_cuda_compute};
+#[cfg(all(feature = "gpu", not(feature = "cuda")))]
+use crate::backends::gpu::implementations::hilbert_transform_gpu_compute;
 
 /// Partial GPU Backend - Only VPIN uses GPU acceleration, all other methods fall back to CPU
 /// This is an honest representation of the current implementation state.
@@ -126,5 +128,12 @@ impl IndicatorsBackend for PartialGpuBackend {
         -> PyResult<Py<PyArray1<f64>>> {
         // Delegate to CPU backend - SuperSmoother has sequential dependencies
         self.cpu_backend.supersmoother(py, data, period)
+    }
+    
+    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize)
+        -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+        // For now, delegate to CPU backend since GPU implementation has complex dependencies
+        // TODO: Implement proper GPU acceleration for parallelizable parts
+        self.cpu_backend.hilbert_transform(py, data, lp_period)
     }
 }

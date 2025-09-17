@@ -42,4 +42,7 @@ impl IndicatorsBackend for CpuBackend {
     fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
         crate::backends::cpu::implementations::supersmoother_cpu(py, data, period)
     }
+    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+        crate::backends::cpu::implementations::hilbert_transform_cpu(py, data, lp_period)
+    }
 }

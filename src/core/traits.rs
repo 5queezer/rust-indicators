@@ -258,4 +258,41 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// All backends delegate to CPU implementation for optimal performance.
     fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize)
         -> PyResult<Py<PyArray1<f64>>>;
+
+    /// Calculate Ehlers Hilbert Transform
+    ///
+    /// The Hilbert Transform produces a complex-valued signal from a real-valued input,
+    /// enabling the calculation of instantaneous amplitude and phase. This implementation
+    /// follows Ehlers' FIR-based approach with a 4-step process:
+    ///
+    /// 1. **Roofing Filter**: 48-period high-pass + configurable low-pass SuperSmoother
+    /// 2. **AGC Normalization**: Automatic Gain Control for the real component
+    /// 3. **Quadrature Generation**: One-bar difference method
+    /// 4. **SuperSmoother**: Applied to the imaginary component
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `data`: Array of input values (typically price data)
+    /// - `lp_period`: Low-pass filter period for the roofing filter (commonly 10, 14, or 20)
+    ///
+    /// # Returns
+    /// Tuple of (real_component, imaginary_component) as `PyArray1<f64>`
+    ///
+    /// # Algorithm Details
+    /// - **High-pass period**: Fixed at 48 periods
+    /// - **AGC decay factor**: Fixed at 0.991
+    /// - **SuperSmoother period**: Fixed at 10 periods
+    ///
+    /// # Formula
+    /// 1. Roofed = SuperSmoother(HighPass(data, 48), lp_period)
+    /// 2. Real = AGC(Roofed, 0.991)
+    /// 3. Quadrature = OneDifference(Real)
+    /// 4. Imaginary = SuperSmoother(AGC(Quadrature, 0.991), 10)
+    ///
+    /// # Performance Note
+    /// This indicator has mixed parallelization potential. The roofing filter stages
+    /// can benefit from GPU acceleration, but AGC and SuperSmoother have sequential
+    /// dependencies that are better suited for CPU computation.
+    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize)
+        -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
 }

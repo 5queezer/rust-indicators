@@ -109,6 +109,7 @@ pub enum IndicatorParams {
     WilliamsR { data_size: usize, period: usize },
     Cci { data_size: usize, period: usize },
     SuperSmoother { data_size: usize, period: usize },
+    HilbertTransform { data_size: usize, lp_period: usize },
 }
 
 impl IndicatorParams {
@@ -123,6 +124,7 @@ impl IndicatorParams {
             IndicatorParams::WilliamsR { data_size, .. } => *data_size,
             IndicatorParams::Cci { data_size, .. } => *data_size,
             IndicatorParams::SuperSmoother { data_size, .. } => *data_size,
+            IndicatorParams::HilbertTransform { data_size, .. } => *data_size,
         }
     }
     
@@ -137,6 +139,7 @@ impl IndicatorParams {
             IndicatorParams::WilliamsR { data_size, period } => data_size * period,
             IndicatorParams::Cci { data_size, period } => data_size * period,
             IndicatorParams::SuperSmoother { data_size, period } => data_size * period,
+            IndicatorParams::HilbertTransform { data_size, lp_period } => data_size * lp_period * 4, // Complex algorithm with multiple stages
         }
     }
 }
@@ -159,6 +162,7 @@ impl Default for PerformanceProfile {
         thresholds.insert("williams_r".to_string(), usize::MAX);
         thresholds.insert("cci".to_string(), usize::MAX);
         thresholds.insert("supersmoother".to_string(), usize::MAX);
+        thresholds.insert("hilbert_transform".to_string(), 1000); // Mixed GPU/CPU algorithm, moderate threshold
         
         Self {
             thresholds,
@@ -338,5 +342,31 @@ impl IndicatorsBackend for AdaptiveBackend {
             IndicatorParams::SuperSmoother { data_size: data.as_array().len(), period },
             supersmoother(data, period)
         )
+    }
+    
+    fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+        let data_len = data.as_array().len();
+        
+        // Adaptive selection based on data size and complexity
+        // Hilbert Transform has mixed parallelization potential:
+        // - Roofing filter stages can benefit from GPU
+        // - AGC and SuperSmoother have sequential dependencies
+        // Use GPU for larger datasets where parallel stages provide benefit
+        let params = IndicatorParams::HilbertTransform { data_size: data_len, lp_period };
+        
+        if self.should_use_gpu("hilbert_transform", &params) {
+            // Use GPU backend for larger datasets
+            if let Some(ref gpu_backend) = self.gpu_backend {
+                match gpu_backend.hilbert_transform(py, data.clone(), lp_period) {
+                    Ok(result) => return Ok(result),
+                    Err(_) => {
+                        // Fallback to CPU on GPU error
+                    }
+                }
+            }
+        }
+        
+        // Use CPU backend for smaller datasets or as fallback
+        self.cpu_backend.hilbert_transform(py, data, lp_period)
     }
 }
