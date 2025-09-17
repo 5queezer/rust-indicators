@@ -21,7 +21,7 @@ pub mod utils;
 // Re-export the main structs for Python bindings
 pub use features::RustFeatures;
 pub use indicators::RustTA;
-pub use ml::{RustMLModel, PatternClassifier, TradingClassifier, UnifiedClassifier, ClassifierMode};
+pub use ml::{PatternClassifier, TradingClassifier, UnifiedClassifier, ClassifierMode};
 
 /// Python module definition
 #[pymodule]
@@ -31,9 +31,6 @@ mod rust_indicators {
 
     #[pymodule_export]
     use super::RustFeatures;
-
-    #[pymodule_export]
-    use super::RustMLModel;
 
     #[pymodule_export]
     use super::PatternClassifier;
