@@ -98,4 +98,9 @@ impl RustTA {
     ) -> PyResult<Py<PyArray1<f64>>> {
         self.backend.vpin(py, buy_volumes, sell_volumes, window)
     }
+
+    /// Ehlers SuperSmoother Filter - superior smoothing with minimal lag
+    fn supersmoother(&self, py: Python, data: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+        self.backend.supersmoother(py, data, period)
+    }
 }

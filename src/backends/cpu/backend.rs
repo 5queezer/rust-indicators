@@ -39,4 +39,7 @@ impl IndicatorsBackend for CpuBackend {
         let results = crate::backends::cpu::implementations::vpin_cpu_kernel(buy_vols.as_slice().unwrap(), sell_vols.as_slice().unwrap(), window);
         Ok(PyArray1::from_vec(py, results).to_owned().into())
     }
+    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+        crate::backends::cpu::implementations::supersmoother_cpu(py, data, period)
+    }
 }

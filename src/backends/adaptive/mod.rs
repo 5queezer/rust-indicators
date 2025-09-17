@@ -108,6 +108,7 @@ pub enum IndicatorParams {
     Atr { data_size: usize, period: usize },
     WilliamsR { data_size: usize, period: usize },
     Cci { data_size: usize, period: usize },
+    SuperSmoother { data_size: usize, period: usize },
 }
 
 impl IndicatorParams {
@@ -121,6 +122,7 @@ impl IndicatorParams {
             IndicatorParams::Atr { data_size, .. } => *data_size,
             IndicatorParams::WilliamsR { data_size, .. } => *data_size,
             IndicatorParams::Cci { data_size, .. } => *data_size,
+            IndicatorParams::SuperSmoother { data_size, .. } => *data_size,
         }
     }
     
@@ -134,6 +136,7 @@ impl IndicatorParams {
             IndicatorParams::Atr { data_size, period } => data_size * period,
             IndicatorParams::WilliamsR { data_size, period } => data_size * period,
             IndicatorParams::Cci { data_size, period } => data_size * period,
+            IndicatorParams::SuperSmoother { data_size, period } => data_size * period,
         }
     }
 }
@@ -155,6 +158,7 @@ impl Default for PerformanceProfile {
         thresholds.insert("atr".to_string(), usize::MAX);
         thresholds.insert("williams_r".to_string(), usize::MAX);
         thresholds.insert("cci".to_string(), usize::MAX);
+        thresholds.insert("supersmoother".to_string(), usize::MAX);
         
         Self {
             thresholds,
@@ -325,6 +329,14 @@ impl IndicatorsBackend for AdaptiveBackend {
             self, py, "vpin",
             IndicatorParams::Vpin { data_size: buy_volumes.as_array().len(), window },
             vpin(buy_volumes, sell_volumes, window)
+        )
+    }
+    
+    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+        delegate_indicator!(
+            self, py, "supersmoother",
+            IndicatorParams::SuperSmoother { data_size: data.as_array().len(), period },
+            supersmoother(data, period)
         )
     }
 }

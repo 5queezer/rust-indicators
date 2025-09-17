@@ -121,4 +121,10 @@ impl IndicatorsBackend for PartialGpuBackend {
         
         Ok(PyArray1::from_vec(py, results).to_owned().into())
     }
+    
+    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize)
+        -> PyResult<Py<PyArray1<f64>>> {
+        // Delegate to CPU backend - SuperSmoother has sequential dependencies
+        self.cpu_backend.supersmoother(py, data, period)
+    }
 }

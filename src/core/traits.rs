@@ -230,4 +230,32 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         sell_volumes: PyReadonlyArray1<'py, f64>,
         window: usize
     ) -> PyResult<Py<PyArray1<f64>>>;
+
+    /// Calculate Ehlers SuperSmoother Filter
+    ///
+    /// SuperSmoother is a low-pass filter that provides superior smoothing with minimal lag.
+    /// It uses a two-pole Butterworth filter design that eliminates aliasing and provides
+    /// excellent noise reduction while preserving signal integrity.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `data`: Array of input values (typically price data)
+    /// - `period`: Filter period (must be >= 2)
+    ///
+    /// # Returns
+    /// `PyArray1<f64>` containing SuperSmoother filtered values
+    ///
+    /// # Formula
+    /// SuperSmoother uses coefficients calculated from:
+    /// - a1 = exp(-1.414 * π / period)
+    /// - b1 = 2 * a1 * cos(1.414 * π / period)
+    /// - c1 = 1 - c2 - c3, c2 = b1, c3 = -a1²
+    ///
+    /// Filter equation: out[i] = c1 * (data[i] + data[i-1]) / 2 + c2 * out[i-1] + c3 * out[i-2]
+    ///
+    /// # Performance Note
+    /// This indicator has sequential dependencies and does not benefit from GPU acceleration.
+    /// All backends delegate to CPU implementation for optimal performance.
+    fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize)
+        -> PyResult<Py<PyArray1<f64>>>;
 }

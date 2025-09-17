@@ -1,5 +1,6 @@
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use std::f64::consts::PI;
 
 pub fn rsi_cpu<'py>(py: Python<'py>, prices: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
     let prices = prices.as_array();
@@ -139,6 +140,42 @@ pub fn cci_cpu<'py>(py: Python<'py>, high: PyReadonlyArray1<f64>, low: PyReadonl
     Ok(PyArray1::from_vec(py, results).to_owned().into())
 }
 
+
+pub fn calculate_supersmoother_coeffs(period: f64) -> (f64, f64, f64) {
+    let a1 = (-1.414 * PI / period).exp();
+    let b1 = 2.0 * a1 * (1.414 * PI / period).cos();
+    let c2 = b1;
+    let c3 = -a1 * a1;
+    let c1 = 1.0 - c2 - c3;
+    (c1, c2, c3)
+}
+
+pub fn supersmoother_cpu<'py>(py: Python<'py>, data: PyReadonlyArray1<f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> {
+    let data = data.as_array();
+    let len = data.len();
+    let mut results = vec![0.0; len];
+    
+    if period < 2 { return Ok(PyArray1::from_vec(py, results).to_owned().into()); }
+    if len < 3 { return Ok(PyArray1::from_vec(py, results).to_owned().into()); }
+    
+    let (c1, c2, c3) = calculate_supersmoother_coeffs(period as f64);
+    
+    // Start calculation at index 2 (need 2 previous values)
+    let mut i = 2;
+    // Unrolled loop for potential SIMD optimization
+    while i + 3 < len {
+        results[i] = c1 * (data[i] + data[i - 1]) / 2.0 + c2 * results[i - 1] + c3 * results[i - 2];
+        results[i + 1] = c1 * (data[i + 1] + data[i]) / 2.0 + c2 * results[i] + c3 * results[i - 1];
+        results[i + 2] = c1 * (data[i + 2] + data[i + 1]) / 2.0 + c2 * results[i + 1] + c3 * results[i];
+        results[i + 3] = c1 * (data[i + 3] + data[i + 2]) / 2.0 + c2 * results[i + 2] + c3 * results[i + 1];
+        i += 4;
+    }
+    for j in i..len {
+        results[j] = c1 * (data[j] + data[j - 1]) / 2.0 + c2 * results[j - 1] + c3 * results[j - 2];
+    }
+    
+    Ok(PyArray1::from_vec(py, results).to_owned().into())
+}
 
 pub fn vpin_cpu_kernel(
     buy_volumes: &[f64],
