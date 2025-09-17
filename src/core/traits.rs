@@ -251,7 +251,7 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
     /// - b1 = 2 * a1 * cos(1.414 * π / period)
     /// - c1 = 1 - c2 - c3, c2 = b1, c3 = -a1²
     ///
-    /// Filter equation: out[i] = c1 * (data[i] + data[i-1]) / 2 + c2 * out[i-1] + c3 * out[i-2]
+    /// Filter equation: out\[i\] = c1 * (data\[i\] + data\[i-1\]) / 2 + c2 * out\[i-1\] + c3 * out\[i-2\]
     ///
     /// # Performance Note
     /// This indicator has sequential dependencies and does not benefit from GPU acceleration.

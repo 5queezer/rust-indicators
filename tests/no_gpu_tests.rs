@@ -19,11 +19,6 @@ mod no_gpu_tests {
         (vec![], vec![], 1)
     }
 
-    #[allow(dead_code)]
-    fn generate_random_data(len: usize) -> Vec<f64> {
-        let mut rng = rand::thread_rng();
-        (0..len).map(|_| rng.gen_range(0.0..100.0)).collect()
-    }
 
     fn assert_approx_eq(a: &[f64], b: &[f64], epsilon: f64) {
         assert_eq!(a.len(), b.len(), "Vectors have different lengths");

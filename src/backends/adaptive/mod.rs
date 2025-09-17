@@ -27,8 +27,7 @@
 //!
 //! The adaptive backend maintains performance profiles for each indicator:
 //!
-//! - **Calibration**: Periodic benchmarking to determine optimal thresholds
-//! - **Thresholds**: Data size thresholds where GPU becomes more efficient than CPU
+//! - **Thresholds**: Pre-configured data size thresholds where GPU becomes more efficient than CPU
 //! - **Fallback**: Automatic fallback to CPU when GPU is unavailable or inefficient
 //!
 //! # Usage Example
@@ -63,9 +62,8 @@
 //!
 //! ## VPIN Indicator
 //!
-//! - **Threshold**: ~1500 data points (calibrated automatically)
+//! - **Threshold**: ~1500 data points (pre-configured)
 //! - **GPU Advantage**: Significant for datasets > 2000 points
-//! - **Calibration**: Automatic benchmarking every hour
 //!
 //! ## Other Indicators
 //!
@@ -86,7 +84,6 @@
 //! The adaptive backend provides robust error handling:
 //!
 //! - **GPU Unavailable**: Graceful fallback to CPU backend
-//! - **Calibration Failures**: Continue with default thresholds
 //! - **Backend Errors**: Propagate PyO3 errors with context
 
 use crate::core::traits::IndicatorsBackend;
@@ -96,7 +93,6 @@ use crate::delegate_indicator;
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use std::time::{SystemTime, Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub enum IndicatorParams {
@@ -146,8 +142,6 @@ impl IndicatorParams {
 
 pub struct PerformanceProfile {
     pub thresholds: HashMap<String, usize>,
-    pub last_calibration: SystemTime,
-    pub calibration_interval: Duration,
 }
 
 impl Default for PerformanceProfile {
@@ -166,8 +160,6 @@ impl Default for PerformanceProfile {
         
         Self {
             thresholds,
-            last_calibration: SystemTime::now(),
-            calibration_interval: Duration::from_secs(3600),
         }
     }
 }
@@ -205,70 +197,7 @@ impl AdaptiveBackend {
         params.computational_complexity() >= threshold
     }
     
-    pub fn calibrate_performance(&mut self, indicator: &str) -> PyResult<()> {
-        if !self.gpu_available {
-            return Ok(());
-        }
-        
-        match indicator {
-            "vpin" => self.calibrate_vpin(),
-            _ => Ok(()), // Other indicators use CPU-only for now
-        }
-    }
     
-    fn calibrate_vpin(&mut self) -> PyResult<()> {
-        let test_sizes = vec![2000, 3000, 4000, 5000, 6000, 7000];
-        let window = 50;
-        let iterations = 3;
-        
-        for &size in &test_sizes {
-            let (cpu_time, gpu_time) = self.benchmark_vpin_at_size(size, window, iterations)?;
-            
-            if gpu_time < cpu_time {
-                self.performance_profile.thresholds.insert("vpin".to_string(), size);
-                break;
-            }
-        }
-        
-        self.performance_profile.last_calibration = SystemTime::now();
-        Ok(())
-    }
-    
-    fn benchmark_vpin_at_size(&self, size: usize, window: usize, iterations: usize) -> PyResult<(f64, f64)> {
-        let buy_volumes: Vec<f64> = (0..size).map(|i| (i as f64 * 0.1).sin().abs()).collect();
-        let sell_volumes: Vec<f64> = (0..size).map(|i| (i as f64 * 0.1).cos().abs()).collect();
-        
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let _ = crate::utils::benchmarking::benchmark_vpin_cpu(&buy_volumes, &sell_volumes, window);
-        }
-        let cpu_time = start.elapsed().as_secs_f64() / iterations as f64;
-        
-        let gpu_time = if self.gpu_backend.is_some() {
-            let start = Instant::now();
-            for _ in 0..iterations {
-                #[cfg(feature = "cuda")]
-                {
-                    let _ = crate::backends::gpu::implementations::vpin_cuda_compute(&buy_volumes, &sell_volumes, window);
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    let _ = crate::utils::benchmarking::benchmark_vpin_cpu(&buy_volumes, &sell_volumes, window);
-                }
-            }
-            start.elapsed().as_secs_f64() / iterations as f64
-        } else {
-            f64::MAX
-        };
-        
-        Ok((cpu_time, gpu_time))
-    }
-    
-    #[allow(dead_code)]
-    fn needs_recalibration(&self) -> bool {
-        self.performance_profile.last_calibration.elapsed()
-            .unwrap_or(Duration::MAX) > self.performance_profile.calibration_interval
-    }
 }
 
 impl IndicatorsBackend for AdaptiveBackend {
