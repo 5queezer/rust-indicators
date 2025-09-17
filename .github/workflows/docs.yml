@@ -1,0 +1,80 @@
+name: Deploy Rust docs to GitHub Pages
+
+on:
+  push:
+    branches: [ master ]
+    # optional: deploy docs for tags too
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write        # required for actions/deploy-pages
+  id-token: write     # required for actions/deploy-pages
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # (optional) Speed up builds with caching
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # Build docs (workspace: all members; otherwise drop --workspace)
+      - name: Build docs
+        run: |
+          cargo doc --workspace --all-features --no-deps
+          # Create a friendly index.html that redirects to your crate docs.
+          # Set the crate/package you want as the landing page:
+          CRATE_NAME="${{ env.CRATE_NAME }}"
+          if [ -z "$CRATE_NAME" ]; then
+            # fallback: try to infer from the root package name in Cargo.toml
+            CRATE_NAME=$(grep -m1 -E '^\s*name\s*=\s*"' Cargo.toml | head -1 | sed -E 's/.*name\s*=\s*"([^"]+)".*/\1/')
+          fi
+          mkdir -p ./_site
+          cp -r target/doc/* ./_site/
+          # If rustdoc didn't produce a top-level index, make one that redirects to your crate
+          if [ ! -f ./_site/index.html ] && [ -n "$CRATE_NAME" ]; then
+            cat > ./_site/index.html <<EOF
+            <!doctype html><meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=./$CRATE_NAME/">
+            <link rel="canonical" href="./$CRATE_NAME/">
+            EOF
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
