@@ -214,7 +214,7 @@
 //! ### Gradient Descent Training
 //! The classifier uses a custom gradient descent implementation:
 //!
-//! ```rust
+//! ```rust,ignore
 //! // Simplified training loop
 //! for epoch in 0..epochs {
 //!     let mut gradient = vec![0.0; n_features];
@@ -237,7 +237,7 @@
 //! ```
 //!
 //! ### Prediction Algorithm
-//! ```rust
+//! ```rust,ignore
 //! fn predict_sample(&self, features: &[f32]) -> (i32, f32) {
 //!     let weighted_sum = features.iter()
 //!         .zip(&self.model_weights)
@@ -315,7 +315,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ToPyArray, ndarray};
+use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
 use std::collections::HashMap;
 
 use crate::extract_safe;
@@ -509,7 +509,7 @@ impl TradingClassifier {
     }
 
     /// Make prediction with confidence score
-    fn predict_with_confidence(&self, py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
+    fn predict_with_confidence(&self, _py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
         if !self.trained {
             return Err(PyValueError::new_err("Model not trained"));
         }
@@ -637,7 +637,7 @@ impl TradingClassifier {
 impl MLBackend for TradingClassifier {
     fn train_model<'py>(
         &mut self,
-        py: Python<'py>,
+        _py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
     ) -> PyResult<HashMap<String, f32>> {
