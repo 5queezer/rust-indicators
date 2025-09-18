@@ -15,5 +15,11 @@ pub use fractional_differentiation::*;
 pub mod stationarity_tests;
 pub use stationarity_tests::*;
 
+pub mod triple_barrier;
+pub use triple_barrier::*;
+
+pub mod meta_labeling;
+pub use meta_labeling::*;
+
 pub mod traits;
 pub use traits::*;

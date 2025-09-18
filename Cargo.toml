@@ -21,6 +21,7 @@ ndarray-stats = "0.5"
 time = { version = "0.3", features = ["serde", "parsing", "macros"] }
 thiserror = "1.0"
 nalgebra = "0.32"
+rayon = "1.8"
 
 # GPU/CUDA dependencies - optional for GPU acceleration
 cubecl = { version = "0.2", optional = true }
