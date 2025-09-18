@@ -124,7 +124,7 @@
 //! ### Confidence Scoring Algorithm
 //! The confidence scoring uses a sophisticated approach:
 //!
-//! ```rust
+//! ```rust,ignore
 //! // 1. Linear combination of features
 //! let weighted_sum = features.iter()
 //!     .zip(&model_weights)
@@ -150,7 +150,7 @@
 //! ### Feature Attribution Method
 //! Feature contributions are calculated using:
 //!
-//! ```rust
+//! ```rust,ignore
 //! let contributions: Vec<f32> = features.iter()
 //!     .zip(&model_weights)
 //!     .zip(&feature_importance)

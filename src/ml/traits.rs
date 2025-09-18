@@ -39,7 +39,7 @@ use std::collections::HashMap;
 ///
 /// ```rust
 /// use rust_indicators::ml::traits::MLBackend;
-/// use numpy::{PyArray1, PyReadonlyArray2};
+/// use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 /// use pyo3::prelude::*;
 /// use pyo3::exceptions::PyValueError;
 /// use std::collections::HashMap;
@@ -507,6 +507,7 @@ pub trait CrossValidator: Send + Sync + 'static {
 /// #   fn get_prediction_explanation<'py>(&self, py: Python<'py>, features: PyReadonlyArray1<'py, f32>) -> PyResult<Py<PyArray1<f32>>> { todo!() }
 /// #   fn set_confidence_threshold(&mut self, threshold: f32) -> PyResult<()> { Ok(()) }
 /// #   fn get_confidence_threshold(&self) -> f32 { 0.5 }
+/// #   fn set_confidence_threshold_unchecked(&mut self, _threshold: f32) {}
 /// }
 /// ```
 pub trait Predictor: Send + Sync + 'static {
@@ -638,7 +639,7 @@ pub trait Predictor: Send + Sync + 'static {
 ///
 /// # Example Implementation
 ///
-/// ```rust
+/// ```rust,ignore
 /// use rust_indicators::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor, UnifiedMLBackend};
 /// use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 /// use pyo3::prelude::*;

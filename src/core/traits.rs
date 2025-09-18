@@ -56,6 +56,8 @@ use pyo3::prelude::*;
 /// #   fn williams_r<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> { todo!() }
 /// #   fn cci<'py>(&self, py: Python<'py>, high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> { todo!() }
 /// #   fn vpin<'py>(&self, py: Python<'py>, buy_volumes: PyReadonlyArray1<'py, f64>, sell_volumes: PyReadonlyArray1<'py, f64>, window: usize) -> PyResult<Py<PyArray1<f64>>> { todo!() }
+/// #   fn supersmoother<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>> { todo!() }
+/// #   fn hilbert_transform<'py>(&self, py: Python<'py>, data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> { todo!() }
 /// }
 /// ```
 pub trait IndicatorsBackend: Send + Sync + 'static {

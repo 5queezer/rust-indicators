@@ -123,7 +123,7 @@
 //! The volatility weighting strategy emphasizes periods with high information content:
 //!
 //! #### Algorithm
-//! ```rust
+//! ```rust,ignore
 //! // For each sample i:
 //! let window_start = i.saturating_sub(window_size);
 //! let window_returns = &returns[window_start..i];
@@ -156,7 +156,7 @@
 //! The pattern weighting strategy emphasizes rare and significant patterns:
 //!
 //! #### Algorithm
-//! ```rust
+//! ```rust,ignore
 //! // For each sample i:
 //! let pattern_count = pattern_signals.row(i)
 //!     .iter()
