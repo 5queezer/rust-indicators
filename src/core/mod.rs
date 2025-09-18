@@ -9,5 +9,11 @@ pub use bar::*;
 pub mod financial_series;
 pub use financial_series::*;
 
+pub mod fractional_differentiation;
+pub use fractional_differentiation::*;
+
+pub mod stationarity_tests;
+pub use stationarity_tests::*;
+
 pub mod traits;
 pub use traits::*;
