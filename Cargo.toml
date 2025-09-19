@@ -19,6 +19,9 @@ rand = "0.8"  # For random data generation in tests
 statrs = "0.16"  # For statistical functions and tests
 rayon = "1.10"  # For parallel processing
 lazy_static = "1.4"  # For global static variables
+once_cell = "1.19" # For lazy static initialization
+toml = "0.8" # For parsing TOML configuration files
+log = "0.4" # For logging
 
 # Core Financial Data Structures dependencies for financial time series analysis
 polars = { version = "0.35", features = ["lazy", "temporal", "strings"] }

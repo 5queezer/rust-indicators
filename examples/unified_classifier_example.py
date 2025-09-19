@@ -78,7 +78,7 @@ def generate_unified_data(n_samples=1000):
         'prices': prices
     }
 
-def basic_unified_classifier_example():
+def basic_unified_classifier_example(backend=None):
     """Basic UnifiedClassifier usage in different modes."""
     print("=== Basic Unified Classifier Example ===")
 
@@ -87,7 +87,7 @@ def basic_unified_classifier_example():
     n_features = data['unified_features'].shape[1]
 
     # Initialize unified classifier in hybrid mode
-    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid)
+    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid, backend=backend)
 
     print("Initialized UnifiedClassifier:")
     print(f"  Features: {n_features}")
@@ -143,7 +143,7 @@ def basic_unified_classifier_example():
 
     return classifier, data
 
-def mode_switching_example():
+def mode_switching_example(backend=None):
     """Example of switching between different classifier modes."""
     print("\n=== Mode Switching Example ===")
 
@@ -151,7 +151,7 @@ def mode_switching_example():
     n_features = data['unified_features'].shape[1]
 
     # Initialize classifier
-    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid)
+    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid, backend=backend)
 
     # Prepare data
     split_idx = 800
@@ -221,7 +221,7 @@ def mode_switching_example():
 
     return mode_results
 
-def advanced_unified_classifier_example():
+def advanced_unified_classifier_example(backend=None):
     """Advanced usage with custom parameters and analysis."""
     print("\n=== Advanced Unified Classifier Example ===")
 
@@ -230,7 +230,7 @@ def advanced_unified_classifier_example():
     n_features = data['unified_features'].shape[1]
 
     # Initialize with custom parameters
-    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid)
+    classifier = UnifiedClassifier(n_features=n_features, mode=ClassifierMode.Hybrid, backend=backend)
     classifier.set_embargo_pct(0.02)  # 2% embargo
     classifier.set_pattern_duration(8)  # 8-bar pattern duration
 
@@ -304,12 +304,12 @@ def advanced_unified_classifier_example():
 
     return classifier
 
-def label_generation_comparison():
+def label_generation_comparison(backend=None):
     """Compare different label generation methods."""
     print("\n=== Label Generation Comparison ===")
 
     data = generate_unified_data(800)
-    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid)
+    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid, backend=backend)
 
     # Generate triple barrier labels
     print("Generating triple barrier labels...")
@@ -357,12 +357,12 @@ def label_generation_comparison():
 
     return triple_labels, pattern_labels
 
-def cross_validation_comparison():
+def cross_validation_comparison(backend=None):
     """Compare different cross-validation strategies."""
     print("\n=== Cross-Validation Comparison ===")
 
     data = generate_unified_data(1000)
-    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid)
+    classifier = UnifiedClassifier(n_features=data['unified_features'].shape[1], mode=ClassifierMode.Hybrid, backend=backend)
 
     n_samples = 800
     n_splits = 3
@@ -406,19 +406,19 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # Basic example
-    basic_classifier, data = basic_unified_classifier_example()
+    basic_classifier, data = basic_unified_classifier_example(backend="gpu")
 
     # Mode switching example
-    mode_results = mode_switching_example()
+    mode_results = mode_switching_example(backend="gpu")
 
     # Advanced example
-    advanced_classifier = advanced_unified_classifier_example()
+    advanced_classifier = advanced_unified_classifier_example(backend="gpu")
 
     # Label generation comparison
-    triple_labels, pattern_labels = label_generation_comparison()
+    triple_labels, pattern_labels = label_generation_comparison(backend="gpu")
 
     # Cross-validation comparison
-    purged_splits, pattern_splits = cross_validation_comparison()
+    purged_splits, pattern_splits = cross_validation_comparison(backend="gpu")
 
     print("\n" + "=" * 50)
     print("Examples completed successfully!")

@@ -344,4 +344,8 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
     ) -> PyResult<HilbertTransformOutput>;
+
+    fn _cpu_vpin(&self, buy_volumes: &[f64], sell_volumes: &[f64], window: usize) -> Vec<f64>;
+
+    fn _cpu_hilbert_transform(&self, data: &[f64], lp_period: usize) -> (Vec<f64>, Vec<f64>);
 }

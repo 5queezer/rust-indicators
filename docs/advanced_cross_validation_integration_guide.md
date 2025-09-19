@@ -65,7 +65,7 @@ println!("Risk Assessment: {}", risk);
 use rust_indicators::ml::models::{UnifiedClassifier, ClassifierMode};
 
 // Create unified classifier
-let mut classifier = UnifiedClassifier::new(10, Some(ClassifierMode::Hybrid))?;
+let mut classifier = UnifiedClassifier::new(10, Some(ClassifierMode::Hybrid), Some("gpu".to_string().into()))?;
 
 // Enable Advanced Cross-Validation validation
 classifier.enable_advanced_cross_validation_validation(0.02, 8, 2, 100, 20)?;
@@ -226,7 +226,10 @@ from rust_indicators import PatternClassifier
 import numpy as np
 
 # Create classifier
-classifier = PatternClassifier(n_features=7)
+classifier = PatternClassifier(pattern_names=["pattern1", "pattern2"], backend="gpu")
+
+# For UnifiedClassifier, you can also specify the backend
+# classifier = UnifiedClassifier(n_features=10, mode=ClassifierMode.Hybrid, backend="gpu")
 
 # Enable Advanced Cross-Validation validation
 classifier.enable_advanced_cross_validation_validation(

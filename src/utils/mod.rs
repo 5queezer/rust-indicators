@@ -5,7 +5,9 @@
 
 pub mod backend_selection;
 pub mod benchmarking;
+pub mod gpu_validation;
 pub mod macros;
+pub mod performance;
 pub mod testing;
 
 // Re-export the delegation macro for easy access

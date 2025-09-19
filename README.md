@@ -1,5 +1,49 @@
 # Rust Indicators
 
+## GPU Configuration
+
+The GPU backend can be configured using a `config.toml` file in the root of the project or through environment variables.
+
+### Configuration File (`config.toml`)
+
+```toml
+# GPU Configuration for rust_indicators
+
+[gpu]
+# Enable or disable GPU support globally.
+# Default: true
+enabled = true
+
+# Minimum dataset size to consider using the GPU for ML tasks.
+# Datasets smaller than this will use the CPU.
+# Default: 1000
+min_dataset_size = 1000
+
+# GPU memory limit in megabytes.
+# If the GPU has less memory than this, it will not be used.
+# Default: None (no limit)
+memory_limit_mb = 2048
+
+# Minimum number of CUDA cores required.
+# If the GPU has fewer cores, it will not be used.
+# This is a placeholder and not yet fully implemented.
+# Default: None (no limit)
+cuda_cores_min = 4096
+```
+
+### Environment Variables
+
+- `ML_GPU_ENABLED`: `true` or `false`
+- `ML_GPU_MIN_DATASET_SIZE`: integer
+- `ML_GPU_MEMORY_LIMIT_MB`: integer
+- `ML_GPU_CUDA_CORES_MIN`: integer
+
+### Performance Tuning
+
+- For small datasets, the CPU backend is often faster due to the overhead of transferring data to the GPU. The `min_dataset_size` parameter can be used to control this behavior.
+- The `memory_limit_mb` parameter can be used to prevent out-of-memory errors on GPUs with limited memory.
+- The `cuda_cores_min` parameter can be used to ensure that the GPU has sufficient processing power for the workload.
+
 *High-performance technical analysis indicators for quantitative trading with adaptive GPU acceleration*
 
 ## Overview

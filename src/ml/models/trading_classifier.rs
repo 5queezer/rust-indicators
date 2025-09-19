@@ -21,6 +21,34 @@
 //! - **Embargo Management**: Configurable embargo periods for different markets
 //! - **Scientific Rigor**: Addresses common pitfalls in financial ML
 //!
+//! ## GPU Acceleration
+//!
+//! The `TradingClassifier` now supports GPU acceleration through a backend injection mechanism.
+//! This allows computationally intensive operations like gradient descent training and
+//! batch predictions to be offloaded to a GPU-enabled backend (e.g., `PartialGpuBackend`)
+//! for significant performance improvements.
+//!
+//! ### Key Accelerated Operations:
+//! - **Gradient Descent Training**: Parallelized weight updates across features and samples.
+//! - **Purged Cross-Validation**: Faster fold evaluation by leveraging GPU for internal training.
+//! - **Batch Prediction**: High-throughput inference for large datasets.
+//! - **Feature Importance**: Accelerated calculation of feature contributions.
+//!
+//! ### Backend Selection
+//! The desired backend can be specified during initialization:
+//! ```python
+//! from rust_indicators import TradingClassifier
+//!
+//! # Use CPU backend (default)
+//! cpu_classifier = TradingClassifier(n_features=7, backend="cpu")
+//!
+//! # Attempt to use GPU backend (falls back to CPU if unavailable)
+//! gpu_classifier = TradingClassifier(n_features=7, backend="gpu")
+//!
+//! # Use the selected classifier for training and prediction
+//! # ...
+//! ```
+//!
 //! ## Architecture
 //!
 //! ```text
@@ -35,6 +63,10 @@
 //! │  • TripleBarrierLabeler   • VolatilityWeighting            │
 //! │  • PurgedCrossValidator   • SampleWeightCalculator         │
 //! │  • PredictionEngine                                         │
+//! ├─────────────────────────────────────────────────────────────┤
+//! │  ML Backend (Injected)                                      │
+//! │  • CPUMLBackend           • PartialGpuBackend              │
+//! │  • AdaptiveMLBackend                                        │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -327,6 +359,7 @@ use crate::ml::components::{
     TripleBarrierLabeler, VolatilityWeighting,
 };
 use crate::ml::traits::{CrossValidator, LabelGenerator, MLBackend, Predictor};
+use crate::utils::backend_selection::select_ml_backend;
 
 /// Scientific trading classifier with purged cross-validation
 ///
@@ -344,6 +377,9 @@ pub struct TradingClassifier {
 
     // Advanced Cross-Validation integration
     advanced_cross_validation_workflow: Option<Phase4Workflow>,
+
+    // ML Backend for computations
+    backend: Arc<dyn MLBackend>,
 
     // Training parameters
     embargo_pct: f32,
@@ -366,14 +402,23 @@ pub struct TradingClassifier {
 impl TradingClassifier {
     /// Create a new trading classifier
     #[new]
-    fn new(n_features: usize) -> PyResult<Self> {
+    #[pyo3(signature = (n_features, backend=None))]
+    fn new(n_features: usize, backend: Option<PyObject>) -> PyResult<Self> {
+        let ml_backend = if let Some(backend_obj) = backend {
+            let backend_name: String = backend_obj.extract(Python::acquire_gil().python())?;
+            select_ml_backend(&backend_name)?
+        } else {
+            select_ml_backend("cpu")? // Default to CPU if no backend is specified
+        };
+
         Ok(TradingClassifier {
             triple_barrier_labeler: TripleBarrierLabeler::default(),
             volatility_weighting: VolatilityWeighting::default(),
             cross_validator: PurgedCrossValidator::default(),
-            prediction_engine: PredictionEngine::default(),
+            prediction_engine: PredictionEngine::default(ml_backend.clone()), // Pass cloned Arc
             sample_weight_calculator: SampleWeightCalculator::default(),
             advanced_cross_validation_workflow: None,
+            backend: ml_backend.clone(), // Store the Arc
             embargo_pct: 0.01,
             feature_importance: vec![0.0; n_features],
             sample_weights: Vec::new(),
@@ -393,6 +438,7 @@ impl TradingClassifier {
         y: PyReadonlyArray1<i32>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
+        let py = x.py();
         let x_array = x.as_array();
         let y_array = y.as_array();
         let (n_samples, n_features) = x_array.dim();
@@ -423,8 +469,16 @@ impl TradingClassifier {
 
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
-            let (fold_score, fold_feature_importance) =
-                self.train_fold(&x_array, &y_array, train_idx, test_idx, learning_rate)?;
+            let (fold_score, fold_feature_importance) = self.backend.train_trading_fold(
+                py,
+                x.clone(),
+                y.clone(),
+                train_idx,
+                test_idx,
+                learning_rate,
+                PyArray1::from_vec(py, self.sample_weights.clone()).readonly(),
+                n_features,
+            )?;
 
             cv_scores.push(fold_score);
 
@@ -440,7 +494,14 @@ impl TradingClassifier {
         }
 
         // Train final model
-        self.model_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
+        self.model_weights = self.backend.train_final_trading_model(
+            py,
+            x.clone(),
+            y.clone(),
+            learning_rate,
+            PyArray1::from_vec(py, self.sample_weights.clone()).readonly(),
+            n_features,
+        )?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -542,25 +603,13 @@ impl TradingClassifier {
     /// Make prediction with confidence score
     fn predict_with_confidence(
         &self,
-        _py: Python,
+        py: Python,
         features: PyReadonlyArray1<f32>,
     ) -> PyResult<(i32, f32)> {
         if !self.trained {
             return Err(PyValueError::new_err("Model not trained"));
         }
-
-        let features_array = features.as_array();
-        let feats = extract_safe!(features_array, "features");
-
-        if feats.len() != self.n_features {
-            return Err(PyValueError::new_err(format!(
-                "Expected {} features, got {}",
-                self.n_features,
-                feats.len()
-            )));
-        }
-
-        self.predict_sample(feats)
+        self.backend.predict_with_confidence(py, features)
     }
 
     /// Enable Advanced Cross-Validation overfitting detection with CombinatorialPurgedCV
@@ -633,12 +682,15 @@ impl TradingClassifier {
 
             // Evaluate on combinatorial splits
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
-                let (fold_score, fold_feature_importance) = self.train_fold_with_indices(
-                    &x_array,
-                    &y_array,
+                let (fold_score, fold_feature_importance) = self.backend.train_trading_fold(
+                    py,
+                    x.clone(),
+                    y.clone(),
                     train_idx,
                     test_idx,
                     learning_rate,
+                    PyArray1::from_vec(py, self.sample_weights.clone()).readonly(),
+                    n_features,
                 )?;
 
                 cv_scores.push(fold_score);
@@ -688,8 +740,16 @@ impl TradingClassifier {
                     .create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
 
             for (train_idx, test_idx) in &self.cv_splits {
-                let (fold_score, fold_feature_importance) =
-                    self.train_fold(&x_array, &y_array, train_idx, test_idx, learning_rate)?;
+                let (fold_score, fold_feature_importance) = self.backend.train_trading_fold(
+                    py,
+                    x.clone(),
+                    y.clone(),
+                    train_idx,
+                    test_idx,
+                    learning_rate,
+                    PyArray1::from_vec(py, self.sample_weights.clone()).readonly(),
+                    n_features,
+                )?;
 
                 cv_scores.push(fold_score);
 
@@ -790,126 +850,11 @@ impl TradingClassifier {
 
 // Implementation of internal methods
 impl TradingClassifier {
-    /// Train a single cross-validation fold
-    fn train_fold(
-        &self,
-        x: &ndarray::ArrayView2<f32>,
-        y: &ndarray::ArrayView1<i32>,
-        _train_idx: &[usize],
-        test_idx: &[usize],
-        _lr: f32,
-    ) -> PyResult<(f32, Vec<f32>)> {
-        let mut correct = 0;
-        let mut total = 0;
-        let feature_correlations = vec![0.1; self.n_features]; // Simplified
-
-        // Test performance using simple prediction
-        for &idx in test_idx {
-            let features: Vec<f32> = x.row(idx).to_vec();
-            let (pred_class, confidence) = self.predict_sample(&features)?;
-
-            if confidence > 0.3 {
-                if pred_class == y[idx] {
-                    correct += 1;
-                }
-                total += 1;
-            }
-        }
-
-        let accuracy = if total > 0 {
-            correct as f32 / total as f32
-        } else {
-            0.0
-        };
-        Ok((accuracy, feature_correlations))
-    }
-
-    /// Train a single cross-validation fold with explicit indices (for CombinatorialPurgedCV)
-    fn train_fold_with_indices(
-        &self,
-        x: &ndarray::ArrayView2<f32>,
-        y: &ndarray::ArrayView1<i32>,
-        _train_idx: &[usize],
-        test_idx: &[usize],
-        _lr: f32,
-    ) -> PyResult<(f32, Vec<f32>)> {
-        // Same implementation as train_fold but more explicit about indices
-        self.train_fold(x, y, _train_idx, test_idx, _lr)
-    }
-
     /// Make prediction for a single sample
     fn predict_sample(&self, features: &[f32]) -> PyResult<(i32, f32)> {
-        if features.len() != self.model_weights.len() {
-            return Err(PyValueError::new_err("Feature dimension mismatch"));
-        }
-
-        let weighted_sum = features
-            .iter()
-            .zip(&self.model_weights)
-            .map(|(f, w)| f * w)
-            .sum::<f32>();
-
-        let normalized = weighted_sum.tanh(); // Squash to [-1, 1]
-        let confidence = normalized.abs().min(1.0);
-
-        let prediction = if normalized > 0.15 {
-            2 // Buy
-        } else if normalized < -0.15 {
-            0 // Sell
-        } else {
-            1 // Hold
-        };
-
-        Ok((prediction, confidence))
-    }
-
-    /// Train final model using gradient descent
-    fn train_final_model(
-        &self,
-        x: &ndarray::ArrayView2<f32>,
-        y: &ndarray::ArrayView1<i32>,
-        learning_rate: f32,
-    ) -> PyResult<Vec<f32>> {
-        let (n_samples, n_features) = x.dim();
-        let mut weights = vec![0.01; n_features]; // Small random initialization
-
-        // Simple gradient descent for logistic regression
-        let epochs = 100;
-
-        for _ in 0..epochs {
-            let mut gradient = vec![0.0; n_features];
-
-            for i in 0..n_samples {
-                let features: Vec<f32> = x.row(i).to_vec();
-                let prediction = features
-                    .iter()
-                    .zip(&weights)
-                    .map(|(f, w)| f * w)
-                    .sum::<f32>()
-                    .tanh();
-
-                let target = match y[i] {
-                    0 => -1.0,
-                    1 => 0.0,
-                    2 => 1.0,
-                    _ => 0.0,
-                };
-
-                let error = target - prediction;
-                let weight_factor = self.sample_weights.get(i).unwrap_or(&1.0);
-
-                for j in 0..n_features {
-                    gradient[j] += error * features[j] * weight_factor;
-                }
-            }
-
-            // Update weights
-            for j in 0..n_features {
-                weights[j] += learning_rate * gradient[j] / n_samples as f32;
-            }
-        }
-
-        Ok(weights)
+        let py = Python::acquire_gil().python();
+        let features_array = numpy::PyArray1::from_slice(py, features).readonly();
+        self.backend.predict_with_confidence(py, features_array)
     }
 }
 
@@ -917,38 +862,27 @@ impl TradingClassifier {
 impl MLBackend for TradingClassifier {
     fn train_model<'py>(
         &mut self,
-        _py: Python<'py>,
+        py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
+        _pattern_features: Option<PyReadonlyArray2<'py, f32>>,
+        _price_features: Option<PyReadonlyArray2<'py, f32>>,
+        _pattern_names: Option<Vec<String>>,
     ) -> PyResult<HashMap<String, f32>> {
+        // Delegate to the scientific training method, ignoring pattern-specific features
         self.train_scientific(features, labels, 0.01)
     }
 
     fn predict_with_confidence<'py>(
         &self,
-        _py: Python<'py>,
+        py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<(i32, f32)> {
-        if !self.trained {
-            return Err(PyValueError::new_err("Model not trained"));
-        }
-
-        let features_array = features.as_array();
-        let feats = extract_safe!(features_array, "features");
-
-        if feats.len() != self.n_features {
-            return Err(PyValueError::new_err(format!(
-                "Expected {} features, got {}",
-                self.n_features,
-                feats.len()
-            )));
-        }
-
-        self.predict_sample(feats)
+        self.backend.predict_with_confidence(py, features)
     }
 
     fn get_feature_importance<'py>(&self, py: Python<'py>) -> PyResult<Py<PyArray1<f32>>> {
-        Ok(PyArray1::from_vec(py, self.feature_importance.clone()).into())
+        self.backend.get_feature_importance(py)
     }
 
     fn is_trained(&self) -> bool {
@@ -964,6 +898,69 @@ impl MLBackend for TradingClassifier {
         // Reset Advanced Cross-Validation components
         self.pbo_result = None;
         // Keep combinatorial_cv and overfitting_detector as they are configuration
+    }
+
+    fn evaluate_pattern_fold<'py>(
+        &self,
+        _py: Python<'py>,
+        _pattern_features: PyReadonlyArray2<'py, f32>,
+        _price_features: PyReadonlyArray2<'py, f32>,
+        _labels: PyReadonlyArray1<'py, i32>,
+        _test_idx: &[usize],
+        _pattern_names: &[String],
+        _pattern_weights: &HashMap<String, f32>,
+        _confidence_threshold: f32,
+    ) -> PyResult<f32> {
+        Err(PyValueError::new_err(
+            "TradingClassifier does not support pattern fold evaluation directly.",
+        ))
+    }
+
+    fn train_trading_fold<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<'py, f32>,
+        y: PyReadonlyArray1<'py, i32>,
+        train_idx: &[usize],
+        test_idx: &[usize],
+        learning_rate: f32,
+        sample_weights: PyReadonlyArray1<'py, f32>,
+        n_features: usize,
+    ) -> PyResult<(f32, Vec<f32>)> {
+        self.backend.train_trading_fold(
+            py,
+            x,
+            y,
+            train_idx,
+            test_idx,
+            learning_rate,
+            sample_weights,
+            n_features,
+        )
+    }
+
+    fn train_final_trading_model<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<'py, f32>,
+        y: PyReadonlyArray1<'py, i32>,
+        learning_rate: f32,
+        sample_weights: PyReadonlyArray1<'py, f32>,
+        n_features: usize,
+    ) -> PyResult<Vec<f32>> {
+        self.backend
+            .train_final_trading_model(py, x, y, learning_rate, sample_weights, n_features)
+    }
+
+    fn calculate_pattern_ensemble_weights<'py>(
+        &self,
+        _py: Python<'py>,
+        _pattern_importance: &HashMap<String, f32>,
+        _pattern_names: &[String],
+    ) -> PyResult<HashMap<String, f32>> {
+        Err(PyValueError::new_err(
+            "TradingClassifier does not support pattern ensemble weights directly.",
+        ))
     }
 }
 

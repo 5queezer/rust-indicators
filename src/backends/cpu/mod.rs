@@ -5,4 +5,6 @@
 
 pub mod backend;
 pub mod implementations;
+pub mod ml_backend; // New module for CPU ML backend
 pub use backend::CpuBackend;
+pub use ml_backend::CpuMLBackend; // Export CpuMLBackend

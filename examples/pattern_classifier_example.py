@@ -60,7 +60,7 @@ def basic_pattern_classifier_example():
 
     # Initialize pattern classifier
     pattern_names = data['pattern_names']
-    classifier = PatternClassifier(pattern_names=pattern_names)
+    classifier = PatternClassifier(pattern_names=pattern_names, backend="cpu")
 
     print(f"Initialized PatternClassifier with {len(pattern_names)} patterns:")
     print(f"Patterns: {pattern_names}")
@@ -160,7 +160,7 @@ def advanced_pattern_classifier_example():
     data = generate_sample_data(2000)
 
     # Initialize with custom confidence threshold
-    classifier = PatternClassifier(pattern_names=data['pattern_names'])
+    classifier = PatternClassifier(pattern_names=data['pattern_names'], backend="cpu")
     classifier.set_confidence_threshold(0.7)  # Higher confidence threshold
 
     print("Set confidence threshold to: 0.7")
@@ -240,7 +240,7 @@ def pattern_label_generation_example():
     print("\n=== Pattern Label Generation Example ===")
 
     data = generate_sample_data(500)
-    PatternClassifier(pattern_names=data['pattern_names'])
+    PatternClassifier(pattern_names=data['pattern_names'], backend="cpu")
 
     # Note: create_pattern_labels is not exposed as a public method
     # This is just a placeholder example

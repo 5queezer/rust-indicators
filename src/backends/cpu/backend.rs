@@ -239,6 +239,11 @@ impl IndicatorsBackend for CpuBackend {
         Ok(PyArray1::from_vec(py, results).to_owned().into())
     }
 
+    /// Internal CPU implementation for VPIN, used for GPU fallback.
+    fn _cpu_vpin(&self, buy_volumes: &[f64], sell_volumes: &[f64], window: usize) -> Vec<f64> {
+        crate::backends::cpu::implementations::vpin_cpu_kernel(buy_volumes, sell_volumes, window)
+    }
+
     cpu_method!(supersmoother, supersmoother_cpu, (data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     fn hilbert_transform<'py>(
         &self,
@@ -246,8 +251,11 @@ impl IndicatorsBackend for CpuBackend {
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
     ) -> PyResult<crate::indicators::api::HilbertTransformOutput> {
-        let result =
-            crate::backends::cpu::implementations::hilbert_transform_cpu(py, data, lp_period)?;
-        Ok(result)
+        self.hilbert_transform_cpu_impl(py, data, lp_period)
+    }
+
+    /// Internal CPU implementation for Hilbert Transform, used for GPU fallback.
+    fn _cpu_hilbert_transform(&self, data: &[f64], lp_period: usize) -> (Vec<f64>, Vec<f64>) {
+        crate::backends::cpu::implementations::hilbert_transform_cpu_kernel(data, lp_period)
     }
 }

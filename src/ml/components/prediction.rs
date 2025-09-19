@@ -256,6 +256,7 @@ use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc; // Import Arc
 
 /// Confidence-based prediction engine
 ///
@@ -579,6 +580,8 @@ impl BatchPredictor {
     }
 }
 
+use crate::ml::traits::MLBackend; // Import MLBackend trait
+
 /// Unified prediction engine combining all prediction capabilities
 ///
 /// This struct provides a complete prediction interface implementing
@@ -591,28 +594,35 @@ pub struct PredictionEngine {
     pub batch_predictor: BatchPredictor,
     /// Pattern-specific prediction parameters
     pub pattern_params: HashMap<String, f32>,
+    /// Reference to the ML backend for delegation
+    backend: Arc<dyn MLBackend>,
 }
 
 impl PredictionEngine {
     /// Create a new prediction engine
-    pub fn new(confidence_predictor: ConfidencePredictor, batch_predictor: BatchPredictor) -> Self {
+    pub fn new(
+        confidence_predictor: ConfidencePredictor,
+        batch_predictor: BatchPredictor,
+        backend: Arc<dyn MLBackend>,
+    ) -> Self {
         Self {
             confidence_predictor,
             batch_predictor,
             pattern_params: HashMap::new(),
+            backend,
         }
     }
 
-    /// Create default prediction engine
-    pub fn default() -> Self {
+    /// Create default prediction engine (requires a backend)
+    pub fn default(backend: Arc<dyn MLBackend>) -> Self {
         let confidence_predictor = ConfidencePredictor::default();
         let batch_predictor = BatchPredictor::new(confidence_predictor.clone(), 1000);
 
-        Self::new(confidence_predictor, batch_predictor)
+        Self::new(confidence_predictor, batch_predictor, backend)
     }
 }
 
-impl PredictionEngine {
+impl<'a> PredictionEngine<'a> {
     /// Set pattern-specific parameters
     ///
     /// # Parameters
@@ -630,13 +640,7 @@ impl PredictionEngine {
     }
 }
 
-impl Default for PredictionEngine {
-    fn default() -> Self {
-        Self::default()
-    }
-}
-
-impl Predictor for PredictionEngine {
+impl Predictor for PredictionEngine<'_> {
     fn predict_single<'py>(
         &self,
         py: Python<'py>,
@@ -650,7 +654,7 @@ impl Predictor for PredictionEngine {
         py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<(Py<PyArray1<i32>>, Py<PyArray1<f32>>)> {
-        self.batch_predictor.predict_large_batch(py, features)
+        self.backend.predict_batch(py, features)
     }
 
     fn predict_probabilities<'py>(
@@ -689,8 +693,8 @@ unsafe impl Send for ConfidencePredictor {}
 unsafe impl Sync for ConfidencePredictor {}
 unsafe impl Send for BatchPredictor {}
 unsafe impl Sync for BatchPredictor {}
-unsafe impl Send for PredictionEngine {}
-unsafe impl Sync for PredictionEngine {}
+unsafe impl Send for PredictionEngine<'_> {}
+unsafe impl Sync for PredictionEngine<'_> {}
 
 /// Meta-Labeling engine for binary bet/no-bet classification
 ///

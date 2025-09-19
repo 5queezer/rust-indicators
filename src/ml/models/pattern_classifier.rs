@@ -242,6 +242,7 @@ use crate::ml::components::{
     PBOResult, PatternAwareCrossValidator, PatternLabeler, PatternWeighting, PredictionEngine,
 };
 use crate::ml::traits::{CrossValidator, LabelGenerator, MLBackend, Predictor};
+use crate::utils::backend_selection::select_ml_backend;
 
 /// Pattern recognition classifier with ensemble methods
 ///
@@ -259,6 +260,9 @@ pub struct PatternClassifier {
 
     // Advanced Cross-Validation integration
     advanced_cross_validation_workflow: Option<Phase4Workflow>,
+
+    // ML Backend for computations
+    backend: Box<dyn MLBackend>,
 
     // Pattern ensemble data
     pattern_weights: Option<HashMap<String, f32>>,
@@ -281,13 +285,26 @@ pub struct PatternClassifier {
 impl PatternClassifier {
     /// Create a new pattern classifier
     #[new]
-    fn new(pattern_names: Vec<String>) -> PyResult<Self> {
+    #[pyo3(signature = (pattern_names, backend=None))]
+    fn new(pattern_names: Vec<String>, backend: Option<PyObject>) -> PyResult<Self> {
+        let ml_backend = if let Some(backend_obj) = backend {
+            // Attempt to downcast the PyObject to a Box<dyn MLBackend>
+            // This part is tricky in Rust/PyO3 and might require a custom mechanism
+            // For now, we'll assume it's a string and select the backend
+            // A more robust solution would involve PyO3's FromPyObject trait or a custom wrapper
+            let backend_name: String = backend_obj.extract(Python::acquire_gil().python())?;
+            select_ml_backend(&backend_name)?
+        } else {
+            select_ml_backend("cpu")? // Default to CPU if no backend is specified
+        };
+
         Ok(PatternClassifier {
             pattern_labeler: PatternLabeler::default(),
             pattern_weighting: PatternWeighting::default(),
             cross_validator: PatternAwareCrossValidator::default(),
-            prediction_engine: PredictionEngine::default(),
+            prediction_engine: PredictionEngine::default(&ml_backend), // Pass backend reference
             advanced_cross_validation_workflow: None,
+            backend: ml_backend,
             pattern_weights: None,
             pattern_importance: HashMap::new(),
             trained: false,
@@ -308,77 +325,39 @@ impl PatternClassifier {
         y: &Bound<'_, PyArray1<i32>>,
         pattern_names: Vec<String>,
     ) -> PyResult<HashMap<String, f32>> {
-        let pattern_features = pattern_features.readonly();
-        let price_features = price_features.readonly();
-        let y = y.readonly();
-        let pattern_array = pattern_features.as_array();
-        let _price_array = price_features.as_array();
-        let y_array = y.as_array();
-        let (n_samples, n_patterns) = pattern_array.dim();
+        let py = pattern_features.py();
+        let results = self.backend.train_model(
+            py,
+            pattern_features.readonly(),
+            price_features.readonly(),
+            y.readonly(),
+            pattern_names.clone(),
+        )?;
 
-        if y_array.len() != n_samples {
-            return Err(PyValueError::new_err("Feature and label count mismatch"));
-        }
-
-        // Initialize sample weights if not set
-        if self.sample_weights.len() != n_samples {
-            self.sample_weights = vec![1.0; n_samples];
-        }
-
-        // Create pattern-aware cross-validation splits
-        self.cv_splits = self
-            .cross_validator
-            .create_default_pattern_splits(n_samples, Some(3))?;
         self.pattern_names = pattern_names;
+        self.trained = true;
 
-        let mut cv_scores = Vec::new();
-        let mut pattern_performances = HashMap::new();
-
-        // Initialize pattern importance
-        for pattern_name in &self.pattern_names {
-            self.pattern_importance.insert(pattern_name.clone(), 0.0);
-        }
-
-        // Cross-validation training
-        for (_train_idx, test_idx) in &self.cv_splits {
-            let fold_score = self.evaluate_fold(&pattern_array, &y_array, test_idx)?;
-            cv_scores.push(fold_score);
-
-            // Calculate individual pattern performance
-            for (i, pattern_name) in self.pattern_names.iter().enumerate() {
-                if i < n_patterns {
-                    let pattern_score = fold_score; // Simplified
-                    let current_score = pattern_performances.get(pattern_name).unwrap_or(&0.0);
-                    pattern_performances
-                        .insert(pattern_name.clone(), current_score + pattern_score);
-                }
+        // The backend should return pattern importance and weights
+        // For now, we'll assume the backend updates these internally or returns them in results
+        // and we'll extract them. This might need refinement based on actual backend implementation.
+        // This part needs to be aligned with the actual MLBackend trait return type
+        // For now, a placeholder:
+        if let Some(importance_value) = results.get("pattern_importance") {
+            for pattern_name in &self.pattern_names {
+                self.pattern_importance
+                    .insert(pattern_name.clone(), *importance_value);
+            }
+        } else {
+            // If backend doesn't provide importance, use a default or calculate
+            for pattern_name in &self.pattern_names {
+                self.pattern_importance.insert(pattern_name.clone(), 0.0);
             }
         }
 
-        // Average pattern performances and update importance
-        for (pattern_name, total_score) in pattern_performances {
-            let avg_score = total_score / self.cv_splits.len() as f32;
-            self.pattern_importance.insert(pattern_name, avg_score);
-        }
-
-        // Create ensemble weights
+        // If the backend returns pattern weights, update them here
+        // self.pattern_weights = Some(backend_returned_weights);
+        // For now, recalculate based on importance
         self.pattern_weights = Some(self.calculate_pattern_weights()?);
-        self.trained = true;
-
-        let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let std_score = {
-            let variance = cv_scores
-                .iter()
-                .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>()
-                / cv_scores.len() as f32;
-            variance.sqrt()
-        };
-
-        let mut results = HashMap::new();
-        results.insert("cv_mean".to_string(), mean_score);
-        results.insert("cv_std".to_string(), std_score);
-        results.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
 
         Ok(results)
     }
@@ -512,33 +491,35 @@ impl PatternClassifier {
         pattern_names: Vec<String>,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        let pattern_features = pattern_features.readonly();
-        let price_features = price_features.readonly();
-        let y = y.readonly();
-        let pattern_array = pattern_features.as_array();
-        let _price_array = price_features.as_array();
-        let y_array = y.as_array();
-        let (n_samples, _n_patterns) = pattern_array.dim();
+        let py = pattern_features.py();
+        let pattern_features_readonly = pattern_features.readonly();
+        let price_features_readonly = price_features.readonly();
+        let y_readonly = y.readonly();
 
-        if y_array.len() != n_samples {
-            return Err(PyValueError::new_err("Feature and label count mismatch"));
-        }
-
-        self.pattern_names = pattern_names;
+        self.pattern_names = pattern_names.clone();
 
         // Use Advanced Cross-Validation workflow if available and requested
         if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
             let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+            let n_samples = pattern_features_readonly.as_array().dim().0;
 
             // Define evaluation function for the workflow
             let evaluate_fn = |_train_idx: &[usize],
                                test_idx: &[usize],
                                _combo_id: usize|
              -> PyResult<(f32, f32)> {
-                match self.evaluate_fold_with_indices(&pattern_array, &y_array, test_idx) {
-                    Ok(score) => Ok((score, score)), // Return (train_score, test_score)
-                    Err(e) => Err(e),
-                }
+                // Delegate fold evaluation to the backend
+                let fold_score = self.backend.evaluate_pattern_fold(
+                    py,
+                    pattern_features_readonly.clone(),
+                    price_features_readonly.clone(),
+                    y_readonly.clone(),
+                    test_idx,
+                    &self.pattern_names,
+                    self.pattern_weights.as_ref().unwrap(),
+                    self.confidence_threshold,
+                )?;
+                Ok((fold_score, fold_score)) // Return (train_score, test_score)
             };
 
             // Execute Advanced Cross-Validation workflow
@@ -582,57 +563,29 @@ impl PatternClassifier {
             }
         }
 
-        // Fallback to traditional pattern-aware CV
-        self.cv_splits = self
-            .cross_validator
-            .create_default_pattern_splits(n_samples, Some(3))?;
+        // Fallback to traditional pattern-aware CV or delegate to backend's train_model
+        let results = self.backend.train_model(
+            py,
+            pattern_features_readonly,
+            price_features_readonly,
+            y_readonly,
+            pattern_names.clone(),
+        )?;
 
-        let mut cv_scores = Vec::new();
-        let mut pattern_performances = HashMap::new();
-
-        // Initialize pattern importance
-        for pattern_name in &self.pattern_names {
-            self.pattern_importance.insert(pattern_name.clone(), 0.0);
-        }
-
-        for (_train_idx, test_idx) in &self.cv_splits {
-            let fold_score = self.evaluate_fold(&pattern_array, &y_array, test_idx)?;
-            cv_scores.push(fold_score);
-
-            // Calculate individual pattern performance
-            for pattern_name in self.pattern_names.iter() {
-                let pattern_score = fold_score; // Simplified
-                let current_score = pattern_performances.get(pattern_name).unwrap_or(&0.0);
-                pattern_performances.insert(pattern_name.clone(), current_score + pattern_score);
-            }
-        }
-
-        // Average pattern performances and update importance
-        let n_folds = cv_scores.len() as f32;
-        for (pattern_name, total_score) in pattern_performances {
-            let avg_score = total_score / n_folds;
-            self.pattern_importance.insert(pattern_name, avg_score);
-        }
-
-        // Create ensemble weights
-        self.pattern_weights = Some(self.calculate_pattern_weights()?);
         self.trained = true;
 
-        let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let std_score = {
-            let variance = cv_scores
-                .iter()
-                .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>()
-                / cv_scores.len() as f32;
-            variance.sqrt()
-        };
-
-        let mut results = HashMap::new();
-        results.insert("cv_mean".to_string(), mean_score);
-        results.insert("cv_std".to_string(), std_score);
-        results.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
-        results.insert("n_splits".to_string(), cv_scores.len() as f32);
+        // Update pattern importance and weights from backend results or recalculate
+        if let Some(importance_value) = results.get("pattern_importance") {
+            for pattern_name in &self.pattern_names {
+                self.pattern_importance
+                    .insert(pattern_name.clone(), *importance_value);
+            }
+        } else {
+            for pattern_name in &self.pattern_names {
+                self.pattern_importance.insert(pattern_name.clone(), 0.0);
+            }
+        }
+        self.pattern_weights = Some(self.calculate_pattern_weights()?);
 
         Ok(results)
     }
@@ -681,77 +634,50 @@ impl PatternClassifier {
     fn evaluate_fold(
         &self,
         pattern_features: &ndarray::ArrayView2<f32>,
+        price_features: &ndarray::ArrayView2<f32>, // Added for backend
         y: &ndarray::ArrayView1<i32>,
         test_idx: &[usize],
     ) -> PyResult<f32> {
-        let mut correct = 0;
-        let mut total = 0;
-
-        for &idx in test_idx {
-            if idx < pattern_features.nrows() && idx < y.len() {
-                let pattern_row: Vec<f32> = pattern_features.row(idx).to_vec();
-                let (pred_class, confidence) = self.predict_sample(&pattern_row)?;
-
-                if confidence > self.confidence_threshold {
-                    if pred_class == y[idx] {
-                        correct += 1;
-                    }
-                    total += 1;
-                }
-            }
-        }
-
-        Ok(if total > 0 {
-            correct as f32 / total as f32
-        } else {
-            0.0
-        })
+        let py = Python::acquire_gil().python();
+        self.backend.evaluate_pattern_fold(
+            py,
+            pattern_features.to_owned().into_py(py).extract(py)?,
+            price_features.to_owned().into_py(py).extract(py)?,
+            y.to_owned().into_py(py).extract(py)?,
+            test_idx,
+            &self.pattern_names,
+            self.pattern_weights.as_ref().unwrap(),
+            self.confidence_threshold,
+        )
     }
 
     /// Evaluate a cross-validation fold with explicit indices (for CombinatorialPurgedCV)
     fn evaluate_fold_with_indices(
         &self,
         pattern_features: &ndarray::ArrayView2<f32>,
+        price_features: &ndarray::ArrayView2<f32>, // Added for backend
         y: &ndarray::ArrayView1<i32>,
         test_idx: &[usize],
     ) -> PyResult<f32> {
-        // Same implementation as evaluate_fold but more explicit about indices
-        self.evaluate_fold(pattern_features, y, test_idx)
+        // Delegate to the main evaluate_fold, which now uses the backend
+        self.evaluate_fold(pattern_features, price_features, y, test_idx)
     }
 
     /// Make prediction for a single sample
     fn predict_sample(&self, pattern_features: &[f32]) -> PyResult<(i32, f32)> {
-        let pattern_signal = pattern_features.iter().sum::<f32>() / pattern_features.len() as f32;
-        let confidence = pattern_signal.abs().min(1.0);
-
-        let prediction = if pattern_signal > 0.2 {
-            2
-        } else if pattern_signal < -0.2 {
-            0
-        } else {
-            1
-        };
-
-        Ok((prediction, confidence))
+        let py = Python::acquire_gil().python();
+        let features_array = PyArray1::from_slice(py, pattern_features).readonly();
+        self.backend.predict_with_confidence(py, features_array)
     }
 
     /// Calculate pattern ensemble weights
     fn calculate_pattern_weights(&self) -> PyResult<HashMap<String, f32>> {
-        let mut weights = HashMap::new();
-        let total_importance: f32 = self.pattern_importance.values().sum();
-
-        if total_importance > 0.0 {
-            for (pattern_name, &importance) in &self.pattern_importance {
-                weights.insert(pattern_name.clone(), importance / total_importance);
-            }
-        } else {
-            let uniform_weight = 1.0 / self.pattern_names.len() as f32;
-            for pattern_name in &self.pattern_names {
-                weights.insert(pattern_name.clone(), uniform_weight);
-            }
-        }
-
-        Ok(weights)
+        let py = Python::acquire_gil().python();
+        self.backend.calculate_pattern_ensemble_weights(
+            py,
+            &self.pattern_importance,
+            &self.pattern_names,
+        )
     }
 }
 
@@ -759,88 +685,57 @@ impl PatternClassifier {
 impl MLBackend for PatternClassifier {
     fn train_model<'py>(
         &mut self,
-        _py: Python<'py>,
-        features: PyReadonlyArray2<'py, f32>,
+        py: Python<'py>,
+        pattern_features: PyReadonlyArray2<'py, f32>,
+        price_features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
+        pattern_names: Vec<String>,
     ) -> PyResult<HashMap<String, f32>> {
-        // Use features for both pattern and price features (simplified)
-        // Use the same features array for both parameters (they represent the same data)
-        // Create a simple wrapper that doesn't require the same features twice
-        let features_array = features.as_array();
-        let y_array = labels.as_array();
-        let (n_samples, _n_features) = features_array.dim();
-
-        if y_array.len() != n_samples {
-            return Err(PyValueError::new_err("Feature and label count mismatch"));
-        }
-
-        // Initialize sample weights if not set
-        if self.sample_weights.len() != n_samples {
-            self.sample_weights = vec![1.0; n_samples];
-        }
-
-        // Create pattern-aware cross-validation splits
-        self.cv_splits = self
-            .cross_validator
-            .create_default_pattern_splits(n_samples, Some(3))?;
-
-        let mut cv_scores = Vec::new();
-
-        // Cross-validation training
-        for (_train_idx, test_idx) in &self.cv_splits {
-            let fold_score = self.evaluate_fold(&features_array, &y_array, test_idx)?;
-            cv_scores.push(fold_score);
-        }
-
-        // Create ensemble weights
-        self.pattern_weights = Some(self.calculate_pattern_weights()?);
-        self.trained = true;
-
-        let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let std_score = {
-            let variance = cv_scores
-                .iter()
-                .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>()
-                / cv_scores.len() as f32;
-            variance.sqrt()
-        };
-
-        let mut results = HashMap::new();
-        results.insert("cv_mean".to_string(), mean_score);
-        results.insert("cv_std".to_string(), std_score);
-        results.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
-
-        Ok(results)
+        self.backend
+            .train_model(py, pattern_features, price_features, labels, pattern_names)
     }
 
     fn predict_with_confidence<'py>(
         &self,
-        _py: Python<'py>,
+        py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<(i32, f32)> {
-        let features_array = features.as_array();
-        let feats = extract_safe!(features_array, "features");
-        self.predict_sample(feats)
+        self.backend.predict_with_confidence(py, features)
     }
 
     fn get_feature_importance<'py>(&self, py: Python<'py>) -> PyResult<Py<PyArray1<f32>>> {
-        self.get_pattern_importance(py)
+        self.backend.get_feature_importance(py)
     }
 
     fn is_trained(&self) -> bool {
-        self.trained
+        self.backend.is_trained()
     }
 
     fn reset_model(&mut self) {
-        self.trained = false;
-        self.pattern_weights = None;
-        self.pattern_importance.clear();
-        self.cv_splits.clear();
-        self.sample_weights.clear();
-        // Reset Advanced Cross-Validation components
-        self.pbo_result = None;
-        // Keep advanced_cross_validation_workflow as it is configuration
+        self.backend.reset_model();
+    }
+
+    fn evaluate_pattern_fold<'py>(
+        &self,
+        py: Python<'py>,
+        pattern_features: PyReadonlyArray2<'py, f32>,
+        price_features: PyReadonlyArray2<'py, f32>,
+        labels: PyReadonlyArray1<'py, i32>,
+        test_idx: &[usize],
+        pattern_names: &[String],
+        pattern_weights: &HashMap<String, f32>,
+        confidence_threshold: f32,
+    ) -> PyResult<f32> {
+        self.backend.evaluate_pattern_fold(
+            py,
+            pattern_features,
+            price_features,
+            labels,
+            test_idx,
+            pattern_names,
+            pattern_weights,
+            confidence_threshold,
+        )
     }
 }
 

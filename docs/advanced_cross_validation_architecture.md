@@ -290,7 +290,7 @@ impl CombinatorialPurgedCV {
     
     fn calculate_combinations_parallel(&self) -> Vec<CVMetrics> {
         // Use rayon for CPU parallelization
-        // Leverage GPU backend for large matrix operations
+        // Leverage GPU backend for large matrix operations, including UnifiedClassifier's hybrid training
     }
 }
 ```

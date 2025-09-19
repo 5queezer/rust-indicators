@@ -1,0 +1,22 @@
+# GPU Configuration for rust_indicators
+
+[gpu]
+# Enable or disable GPU support globally.
+# Default: true
+enabled = true
+
+# Minimum dataset size to consider using the GPU for ML tasks.
+# Datasets smaller than this will use the CPU.
+# Default: 1000
+min_dataset_size = 1000
+
+# GPU memory limit in megabytes.
+# If the GPU has less memory than this, it will not be used.
+# Default: None (no limit)
+memory_limit_mb = 2048
+
+# Minimum number of CUDA cores required.
+# If the GPU has fewer cores, it will not be used.
+# This is a placeholder and not yet fully implemented.
+# Default: None (no limit)
+cuda_cores_min = 4096

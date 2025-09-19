@@ -12,6 +12,7 @@
 
 use ndarray::{Array1, Array2};
 use rand::prelude::*;
+use rust_indicators::utils::backend_selection::select_ml_backend; // Import select_ml_backend
 use rust_indicators::{
     financial::series::FinancialSeries,
     ml::{
@@ -39,7 +40,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Demonstrate integration with each ML model
     demonstrate_pattern_classifier_integration(&features, &labels, &sample_weights, &timestamps)?;
     demonstrate_trading_classifier_integration(&features, &labels, &sample_weights, &timestamps)?;
-    demonstrate_unified_classifier_integration(&features, &labels, &sample_weights, &timestamps)?;
+    demonstrate_unified_classifier_integration(
+        &features,
+        &labels,
+        &sample_weights,
+        &timestamps,
+        "cpu",
+    )?;
+    demonstrate_unified_classifier_integration(
+        &features,
+        &labels,
+        &sample_weights,
+        &timestamps,
+        "gpu",
+    )?;
 
     // 3. Show backward compatibility
     demonstrate_backward_compatibility(&features, &labels, &sample_weights, &timestamps)?;
@@ -288,8 +302,12 @@ fn demonstrate_unified_classifier_integration(
     labels: &Array1<i32>,
     _weights: &Array1<f32>,
     _timestamps: &Array1<i64>,
+    backend_type: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("\n=== UnifiedClassifier + Advanced Cross-Validation Integration ===");
+    println!(
+        "\n=== UnifiedClassifier ({}) + Advanced Cross-Validation Integration ===",
+        backend_type
+    );
 
     // Create comprehensive validation system
     let cpcv = CombinatorialPurgedCV::new(0.01, 10, 3, 80, 15);
@@ -305,9 +323,25 @@ fn demonstrate_unified_classifier_integration(
     let mut all_performances = Vec::new();
     let mut split_results = Vec::new();
 
+    // Initialize UnifiedClassifier with the specified backend
+    let mut classifier = UnifiedClassifier::new(
+        features.ncols(),
+        None,
+        Some(backend_type.to_string().into()),
+    )?;
+    classifier.enable_advanced_cross_validation_validation(0.01, 10, 3, 80, 15)?;
+
     for (i, (train_idx, test_idx, combo_id)) in splits.iter().enumerate().take(10) {
         let train_perf = simulate_unified_training(features, labels, train_idx)?;
         let test_perf = simulate_unified_evaluation(features, labels, test_idx)?;
+
+        // Use the classifier's train_with_overfitting_detection for actual training
+        let _ = classifier.train_with_overfitting_detection(
+            &features.to_owned().into(),
+            &labels.to_owned().into(),
+            0.01,
+            true,
+        )?;
 
         all_performances.push(test_perf as f64);
         split_results.push((combo_id, train_perf, test_perf));
@@ -438,29 +472,31 @@ fn demonstrate_backend_performance(
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Multi-Backend Performance Comparison ===");
 
-    let backends = ["CPU", "Adaptive"]; // GPU might not be available
-    let cpcv = CombinatorialPurgedCV::new(0.01, 6, 2, 50, 10);
+    let backends = ["cpu", "gpu"]; // Explicitly test CPU and GPU
+    let n_features = features.ncols();
 
-    for backend_name in &backends {
-        println!("Testing {} backend:", backend_name);
+    for backend_type in &backends {
+        println!("Testing {} backend:", backend_type);
 
         let start_time = std::time::Instant::now();
 
-        // Simulate backend-specific processing
-        let splits = cpcv.create_combinatorial_splits(features.nrows())?;
-        let mut scores = Vec::new();
+        // Create TradingClassifier with the specified backend
+        let mut classifier =
+            TradingClassifier::new(n_features, Some(backend_type.to_string().into()))?;
 
-        for (train_idx, test_idx, _) in splits.iter().take(5) {
-            let score = simulate_backend_evaluation(features, labels, test_idx, backend_name)?;
-            scores.push(score);
-        }
+        // Train the classifier
+        let training_results = classifier.train_scientific(
+            features.to_owned().into(),
+            labels.to_owned().into(),
+            0.01, // learning_rate
+        )?;
 
         let elapsed = start_time.elapsed();
-        let mean_score = scores.iter().sum::<f32>() / scores.len() as f32;
+        let mean_score = training_results["cv_mean"];
 
-        println!("  Performance: {:.3}", mean_score);
+        println!("  Performance (CV Mean): {:.3}", mean_score);
         println!("  Time: {:?}", elapsed);
-        println!("  Splits processed: {}", scores.len());
+        println!("  N Folds: {}", training_results["n_folds"]);
     }
 
     println!("Backend Compatibility: ✓ All backends supported");

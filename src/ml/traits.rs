@@ -32,6 +32,13 @@ pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
 /// - Safe sharing across thread boundaries
 /// - Static lifetime for global backend instances
 ///
+/// # Determinism
+///
+/// Implementations should strive for deterministic results between CPU and GPU
+/// where applicable, especially for numerical computations like gradient descent.
+/// This often involves careful handling of floating-point arithmetic and
+/// consistent seeding of any random number generators.
+///
 /// # Error Handling
 ///
 /// All methods return `PyResult<T>` to properly propagate Python exceptions.
@@ -55,18 +62,21 @@ pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
 /// impl MLBackend for MyMLBackend {
 ///     fn train_model<'py>(&mut self, py: Python<'py>,
 ///         features: PyReadonlyArray2<'py, f32>,
-///         labels: PyReadonlyArray1<'py, i32>)
+///         labels: PyReadonlyArray1<'py, i32>,
+///         _pattern_features: Option<PyReadonlyArray2<'py, f32>>,
+///         _price_features: Option<PyReadonlyArray2<'py, f32>>,
+///         _pattern_names: Option<Vec<String>>,)
 ///         -> PyResult<HashMap<String, f32>> {
 ///         let features_array = features.as_array();
 ///         let labels_array = labels.as_array();
-///         
+///
 ///         if features_array.nrows() != labels_array.len() {
 ///             return Err(PyValueError::new_err("Feature and label count mismatch"));
 ///         }
-///         
+///
 ///         self.trained = true;
 ///         self.feature_count = features_array.ncols();
-///         
+///
 ///         let mut metrics = HashMap::new();
 ///         metrics.insert("cv_mean".to_string(), 0.85);
 ///         metrics.insert("cv_std".to_string(), 0.05);
@@ -91,9 +101,65 @@ pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
 ///
 ///     fn is_trained(&self) -> bool { self.trained }
 ///     fn reset_model(&mut self) { self.trained = false; }
+///
+///     fn evaluate_pattern_fold<'py>(&self, py: Python<'py>,
+///         pattern_features: PyReadonlyArray2<'py, f32>,
+///         price_features: PyReadonlyArray2<'py, f32>,
+///         labels: PyReadonlyArray1<'py, i32>,
+///         test_idx: &[usize],
+///         pattern_names: &[String],
+///         pattern_weights: &HashMap<String, f32>,
+///         confidence_threshold: f32,) -> PyResult<f32> { todo!() }
+///
+///     fn train_trading_fold<'py>(&self, py: Python<'py>,
+///         x: PyReadonlyArray2<'py, f32>,
+///         y: PyReadonlyArray1<'py, i32>,
+///         train_idx: &[usize],
+///         test_idx: &[usize],
+///         learning_rate: f32,
+///         sample_weights: PyReadonlyArray1<'py, f32>,
+///         n_features: usize,) -> PyResult<(f32, Vec<f32>)> { todo!() }
+///
+///     fn train_final_trading_model<'py>(&self, py: Python<'py>,
+///         x: PyReadonlyArray2<'py, f32>,
+///         y: PyReadonlyArray1<'py, i32>,
+///         learning_rate: f32,
+///         sample_weights: PyReadonlyArray1<'py, f32>,
+///         n_features: usize,) -> PyResult<Vec<f32>> { todo!() }
+///
+///     fn calculate_pattern_ensemble_weights<'py>(&self, py: Python<'py>,
+///         pattern_importance: &HashMap<String, f32>,
+///         pattern_names: &[String],) -> PyResult<HashMap<String, f32>> { todo!() }
 /// }
 /// ```
 pub trait MLBackend: Send + Sync + 'static {
+    /// Train a machine learning model
+    ///
+    /// Trains the ML model using the provided features and labels.
+    /// Returns training metrics including cross-validation scores,
+    /// feature importance, and model performance statistics.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `features`: 2D array of feature vectors (samples × features)
+    /// - `labels`: 1D array of target labels
+    ///
+    /// # Returns
+    /// `HashMap<String, f32>` containing training metrics:
+    /// - "cv_mean": Mean cross-validation score
+    /// - "cv_std": Standard deviation of CV scores
+    /// - "n_features": Number of features used
+    /// - "training_accuracy": Final training accuracy
+    ///
+    /// # Errors
+    /// - `PyValueError`: If feature/label dimensions don't match
+    /// - `PyRuntimeError`: If training fails due to computation errors
+    ///
+    /// # Numerical Stability
+    /// Implementations should ensure numerical stability in gradient descent
+    /// and other iterative calculations to prevent issues like NaN or
+    /// infinite values, especially when dealing with floating-point arithmetic
+    /// on different hardware (CPU vs. GPU).
     /// Train a machine learning model
     ///
     /// Trains the ML model using the provided features and labels.
@@ -120,7 +186,70 @@ pub trait MLBackend: Send + Sync + 'static {
         py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
+        pattern_features: Option<PyReadonlyArray2<'py, f32>>, // Made optional for TradingClassifier
+        price_features: Option<PyReadonlyArray2<'py, f32>>,   // Made optional for TradingClassifier
+        pattern_names: Option<Vec<String>>,                   // Made optional for TradingClassifier
     ) -> PyResult<HashMap<String, f32>>;
+
+    /// Train a single cross-validation fold for trading classification
+    ///
+    /// This method is specifically for trading classification models to train
+    /// a single cross-validation fold using the backend's optimized computations.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `x`: 2D array of feature vectors (samples × features)
+    /// - `y`: 1D array of target labels
+    /// - `train_idx`: Indices of samples in the training set
+    /// - `test_idx`: Indices of samples in the test set
+    /// - `learning_rate`: Learning rate for gradient descent
+    /// - `sample_weights`: Weights for each sample
+    /// - `n_features`: Number of features
+    ///
+    /// # Returns
+    /// Tuple of (accuracy_score, feature_importance) for the fold
+    ///
+    /// # Errors
+    /// - `PyValueError`: If dimensions mismatch or computation fails
+    fn train_trading_fold<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<'py, f32>,
+        y: PyReadonlyArray1<'py, i32>,
+        train_idx: &[usize],
+        test_idx: &[usize],
+        learning_rate: f32,
+        sample_weights: PyReadonlyArray1<'py, f32>,
+        n_features: usize,
+    ) -> PyResult<(f32, Vec<f32>)>;
+
+    /// Train the final trading model using gradient descent
+    ///
+    /// This method is specifically for trading classification models to train
+    /// the final model using the backend's optimized gradient descent.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `x`: 2D array of feature vectors (samples × features)
+    /// - `y`: 1D array of target labels
+    /// - `learning_rate`: Learning rate for gradient descent
+    /// - `sample_weights`: Weights for each sample
+    /// - `n_features`: Number of features
+    ///
+    /// # Returns
+    /// `Vec<f32>` containing the trained model weights
+    ///
+    /// # Errors
+    /// - `PyValueError`: If dimensions mismatch or computation fails
+    fn train_final_trading_model<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<'py, f32>,
+        y: PyReadonlyArray1<'py, i32>,
+        learning_rate: f32,
+        sample_weights: PyReadonlyArray1<'py, f32>,
+        n_features: usize,
+    ) -> PyResult<Vec<f32>>;
 
     /// Generate predictions with confidence scores
     ///
@@ -144,6 +273,38 @@ pub trait MLBackend: Send + Sync + 'static {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<(i32, f32)>;
+
+    /// Evaluate a cross-validation fold for pattern classification
+    ///
+    /// This method is specifically for pattern classification models to evaluate
+    /// a single cross-validation fold using the backend's optimized computations.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `pattern_features`: 2D array of pattern feature vectors
+    /// - `price_features`: 2D array of price feature vectors
+    /// - `labels`: 1D array of target labels
+    /// - `test_idx`: Indices of samples in the test set
+    /// - `pattern_names`: Names of the patterns
+    /// - `pattern_weights`: Weights of each pattern in the ensemble
+    /// - `confidence_threshold`: Minimum confidence for a valid prediction
+    ///
+    /// # Returns
+    /// `f32` representing the accuracy score for the fold
+    ///
+    /// # Errors
+    /// - `PyValueError`: If dimensions mismatch or computation fails
+    fn evaluate_pattern_fold<'py>(
+        &self,
+        py: Python<'py>,
+        pattern_features: PyReadonlyArray2<'py, f32>,
+        price_features: PyReadonlyArray2<'py, f32>,
+        labels: PyReadonlyArray1<'py, i32>,
+        test_idx: &[usize],
+        pattern_names: &[String],
+        pattern_weights: &HashMap<String, f32>,
+        confidence_threshold: f32,
+    ) -> PyResult<f32>;
 
     /// Get feature importance scores
     ///
@@ -171,6 +332,63 @@ pub trait MLBackend: Send + Sync + 'static {
     /// Clears all trained parameters and resets the model to its initial state.
     /// Useful for retraining with new data or different parameters.
     fn reset_model(&mut self);
+
+    /// Calculate pattern ensemble weights
+    ///
+    /// Computes the weights for each pattern in the ensemble based on their importance.
+    /// This method can leverage GPU for parallel computation of weights.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    /// - `pattern_importance`: HashMap of pattern names to their importance scores
+    /// - `pattern_names`: Vector of pattern names
+    ///
+    /// # Returns
+    /// `HashMap<String, f32>` containing the calculated weights for each pattern
+    ///
+    /// # Errors
+    /// - `PyValueError`: If computation fails
+    fn calculate_pattern_ensemble_weights<'py>(
+        &self,
+        py: Python<'py>,
+        pattern_importance: &HashMap<String, f32>,
+        pattern_names: &[String],
+    ) -> PyResult<HashMap<String, f32>>;
+
+    /// Get the trained model weights.
+    /// This is primarily used by the PredictionEngine for batch predictions.
+    ///
+    /// # Parameters
+    /// - `py`: Python interpreter context
+    ///
+    /// # Returns
+    /// `PyArray1<f32>` containing the trained model weights.
+    ///
+    /// # Errors
+    /// - `PyValueError`: If the model is not trained.
+    fn get_model_weights<'py>(&self, py: Python<'py>) -> PyResult<Py<PyArray1<f32>>>;
+
+    fn predict_batch<'py>(
+        &self,
+        py: Python<'py>,
+        features: PyReadonlyArray2<'py, f32>,
+    ) -> PyResult<BatchPredictionOutput>;
+
+    fn predict_probabilities<'py>(
+        &self,
+        py: Python<'py>,
+        features: PyReadonlyArray1<'py, f32>,
+    ) -> PyResult<Py<PyArray1<f32>>>;
+
+    fn get_prediction_explanation<'py>(
+        &self,
+        py: Python<'py>,
+        features: PyReadonlyArray1<'py, f32>,
+    ) -> PyResult<Py<PyArray1<f32>>>;
+
+    fn set_confidence_threshold_unchecked(&mut self, threshold: f32);
+
+    fn get_confidence_threshold(&self) -> f32;
 }
 
 /// Trait for generating trading labels from price data
@@ -282,8 +500,13 @@ pub trait LabelGenerator: Send + Sync + 'static {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        ohlc_data: OHLCData<'py>,
-        params: PatternLabelingParams,
+        open_prices: PyReadonlyArray1<'py, f32>,
+        high_prices: PyReadonlyArray1<'py, f32>,
+        low_prices: PyReadonlyArray1<'py, f32>,
+        close_prices: PyReadonlyArray1<'py, f32>,
+        future_periods: usize,
+        profit_threshold: f32,
+        stop_threshold: f32,
     ) -> PyResult<Py<PyArray1<i32>>>;
 
     /// Calculate sample weights
@@ -685,23 +908,3 @@ pub trait Predictor: Send + Sync + 'static {
 /// impl UnifiedMLBackend for MyUnifiedBackend {}
 /// ```
 pub trait UnifiedMLBackend: MLBackend + LabelGenerator + CrossValidator + Predictor {}
-
-// Blanket implementation for any type that implements all four traits
-impl<T> UnifiedMLBackend for T where T: MLBackend + LabelGenerator + CrossValidator + Predictor {}
-
-/// Struct to encapsulate OHLC price data for pattern labeling.
-#[derive(Debug, Clone)]
-pub struct OHLCData<'py> {
-    pub open_prices: PyReadonlyArray1<'py, f32>,
-    pub high_prices: PyReadonlyArray1<'py, f32>,
-    pub low_prices: PyReadonlyArray1<'py, f32>,
-    pub close_prices: PyReadonlyArray1<'py, f32>,
-}
-
-/// Struct to encapsulate parameters for pattern-based label generation.
-#[derive(Debug, Clone, Copy)]
-pub struct PatternLabelingParams {
-    pub future_periods: usize,
-    pub profit_threshold: f32,
-    pub stop_threshold: f32,
-}

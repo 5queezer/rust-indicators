@@ -10,6 +10,7 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 pub mod backends;
+pub mod config;
 /// Rust-powered technical analysis indicators for FreqTrade
 /// Provides 10-100x performance improvement over Python equivalents
 pub mod core;
