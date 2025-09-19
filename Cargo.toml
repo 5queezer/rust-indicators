@@ -17,6 +17,12 @@ serde = { version = "1.0", features = ["derive"] }
 anyhow = "1"
 rand = "0.8"  # For random data generation in tests
 
+# Phase 1 dependencies for financial time series analysis
+polars = { version = "0.35", features = ["lazy", "temporal", "strings"] }
+ndarray = { version = "0.15", features = ["approx", "blas"] }
+ndarray-stats = "0.5"
+time = { version = "0.3", features = ["serde", "parsing"] }
+
 # GPU/CUDA dependencies - optional for GPU acceleration
 cubecl = { version = "0.2", optional = true }
 cubecl-wgpu = { version = "0.2", optional = true }
@@ -27,6 +33,7 @@ mimalloc = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
 rstest = "0.18"
+ctor = "0.2"
 
 # Performance optimizations
 [profile.release]

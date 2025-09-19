@@ -14,12 +14,14 @@ pub mod backends;
 /// Provides 10-100x performance improvement over Python equivalents
 pub mod core;
 pub mod features;
+pub mod financial;
 pub mod indicators;
 pub mod ml;
 pub mod utils;
 
 // Re-export the main structs for Python bindings
 pub use features::RustFeatures;
+pub use financial::FinancialSeries;
 pub use indicators::RustTA;
 pub use ml::{PatternClassifier, TradingClassifier, UnifiedClassifier, ClassifierMode};
 
