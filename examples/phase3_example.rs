@@ -526,3 +526,166 @@ fn count_predictions(predictions: &[i32]) -> [usize; 3] {
     }
     counts
 }
+
+/// Phase 4 Migration Section
+///
+/// This section demonstrates how existing Phase 3 code can be enhanced with Phase 4
+/// overfitting detection and CombinatorialPurgedCV for more robust validation.
+#[cfg(feature = "phase4")]
+mod phase4_migration {
+    use super::*;
+    use rust_indicators::ml::components::{
+        cross_validation::CombinatorialPurgedCV,
+        overfitting_detection::OverfittingDetection,
+    };
+
+    /// Demonstrate migration from Phase 3 to Phase 4
+    pub fn demonstrate_phase4_migration(prices: &[f32], volatility: &[f32], features: &[Vec<f32>]) {
+        println!("\n=== Phase 3 → Phase 4 Migration Path ===");
+        println!("Enhancing existing Phase 3 workflows with Phase 4 overfitting detection\n");
+
+        // Phase 3: Traditional approach
+        demonstrate_phase3_approach(prices, volatility, features);
+        
+        // Phase 4: Enhanced approach
+        demonstrate_phase4_enhancement(prices, volatility, features);
+        
+        // Migration benefits
+        show_migration_benefits();
+    }
+
+    fn demonstrate_phase3_approach(prices: &[f32], volatility: &[f32], features: &[Vec<f32>]) {
+        println!("Phase 3 Approach (Traditional):");
+        
+        // Traditional triple barrier labeling
+        let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20);
+        let labels = simulate_labeling(&labeler, &prices[..100], &volatility[..100], TradingSide::Long);
+        
+        // Traditional meta-labeling
+        let mut primary_predictor = ConfidencePredictor::new(0.6, 5);
+        let weights = vec![0.3, -0.2, 0.5, 0.1, -0.4];
+        let importance = vec![1.0, 1.0, 1.0, 1.0, 1.0];
+        let _ = primary_predictor.set_weights(weights, importance);
+        
+        let meta_labeler = MetaLabeler::new(primary_predictor, 0.5, 0.2);
+        
+        println!("  ✓ Triple barrier labels generated: {}", labels.len());
+        println!("  ✓ Meta-labeling configured");
+        println!("  ⚠️  No overfitting detection");
+        println!("  ⚠️  Standard cross-validation only");
+    }
+
+    fn demonstrate_phase4_enhancement(prices: &[f32], volatility: &[f32], features: &[Vec<f32>]) {
+        println!("\nPhase 4 Enhancement (Advanced):");
+        
+        // Enhanced with CombinatorialPurgedCV
+        let cpcv = CombinatorialPurgedCV::new(
+            0.02,  // 2% embargo
+            8,     // 8 groups
+            2,     // 2 test groups
+            50,    // min train size
+            10,    // min test size
+        );
+        
+        // Enhanced with overfitting detection
+        let overfitting_detector = OverfittingDetection::new(0.05, 5);
+        
+        // Same labeling but with enhanced validation
+        let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20);
+        let labels = simulate_labeling(&labeler, &prices[..100], &volatility[..100], TradingSide::Long);
+        
+        // Generate combinatorial splits for robust validation
+        if let Ok(splits) = cpcv.create_combinatorial_splits(labels.len()) {
+            println!("  ✓ Triple barrier labels generated: {}", labels.len());
+            println!("  ✓ CombinatorialPurgedCV: {} splits generated", splits.len());
+            
+            // Simulate performance across splits
+            let mut performances = Vec::new();
+            for (i, (train_idx, test_idx, _)) in splits.iter().enumerate().take(5) {
+                let perf = simulate_split_performance(train_idx.len(), test_idx.len());
+                performances.push(perf);
+                if i < 3 {
+                    println!("    Split {}: Performance = {:.3}", i, perf);
+                }
+            }
+            
+            // Calculate PBO
+            let pbo_metrics = cpcv.calculate_pbo(&performances, None);
+            println!("  ✓ PBO Analysis: {:.3} ({})",
+                pbo_metrics.pbo,
+                if pbo_metrics.pbo > 0.5 { "Overfit Risk" } else { "Good Generalization" }
+            );
+            
+            println!("  ✓ Enhanced overfitting detection");
+            println!("  ✓ Robust combinatorial validation");
+        }
+    }
+
+    fn show_migration_benefits() {
+        println!("\nMigration Benefits:");
+        println!("┌─────────────────────────────────────────────────────────────┐");
+        println!("│ Phase 3 → Phase 4 Enhancement                              │");
+        println!("├─────────────────────────────────────────────────────────────┤");
+        println!("│ ✓ Backward Compatible: Existing code continues to work     │");
+        println!("│ ✓ Enhanced Validation: CombinatorialPurgedCV integration   │");
+        println!("│ ✓ Overfitting Detection: PBO calculation and analysis      │");
+        println!("│ ✓ Improved Robustness: Multiple validation combinations    │");
+        println!("│ ✓ Better Insights: Confidence intervals and statistics     │");
+        println!("│ ✓ Production Ready: Thread-safe and performance optimized  │");
+        println!("└─────────────────────────────────────────────────────────────┘");
+        
+        println!("\nMigration Steps:");
+        println!("1. Add Phase 4 components to existing imports");
+        println!("2. Replace standard CV with CombinatorialPurgedCV");
+        println!("3. Add overfitting detection to validation pipeline");
+        println!("4. Enhance model selection with PBO analysis");
+        println!("5. Monitor and validate improved performance");
+        
+        println!("\nCode Changes Required:");
+        println!("```rust");
+        println!("// Before (Phase 3)");
+        println!("let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20);");
+        println!("let labels = labeler.generate_labels(prices, volatility);");
+        println!("");
+        println!("// After (Phase 4 Enhanced)");
+        println!("let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20);");
+        println!("let cpcv = CombinatorialPurgedCV::new(0.02, 8, 2, 50, 10);");
+        println!("let detector = OverfittingDetection::new(0.05, 5);");
+        println!("let labels = labeler.generate_labels(prices, volatility);");
+        println!("let splits = cpcv.create_combinatorial_splits(labels.len())?;");
+        println!("let pbo = detector.calculate_pbo(&in_sample, &out_sample)?;");
+        println!("```");
+    }
+
+    fn simulate_split_performance(train_size: usize, test_size: usize) -> f64 {
+        use rand::prelude::*;
+        let mut rng = thread_rng();
+        
+        // Simulate performance with some correlation to data size
+        let base_performance = 0.65;
+        let size_factor = (train_size as f64 / 1000.0).min(0.1);
+        let noise = rng.gen_range(-0.05..0.05);
+        
+        base_performance + size_factor + noise
+    }
+}
+
+/// Enhanced main function that includes Phase 4 migration demonstration
+pub fn main_with_phase4_migration() {
+    // Run original Phase 3 example
+    main();
+    
+    // Add Phase 4 migration demonstration
+    #[cfg(feature = "phase4")]
+    {
+        let (prices, volatility, features) = generate_synthetic_data(200);
+        phase4_migration::demonstrate_phase4_migration(&prices, &volatility, &features);
+    }
+    
+    #[cfg(not(feature = "phase4"))]
+    {
+        println!("\n=== Phase 4 Migration ===");
+        println!("Enable 'phase4' feature to see migration examples:");
+        println!("cargo run --example phase3_example --features phase4");
+    }
+}

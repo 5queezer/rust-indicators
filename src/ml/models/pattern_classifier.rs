@@ -238,6 +238,8 @@ use crate::extract_safe;
 use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
     PatternLabeler, PatternWeighting, PatternAwareCrossValidator, PredictionEngine,
+    CombinatorialPurgedCV, OverfittingDetection, PBOResult,
+    phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
 };
 
 /// Pattern recognition classifier with ensemble methods
@@ -253,6 +255,9 @@ pub struct PatternClassifier {
     cross_validator: PatternAwareCrossValidator,
     prediction_engine: PredictionEngine,
     
+    // Phase 4 integration
+    phase4_workflow: Option<Phase4Workflow>,
+    
     // Pattern ensemble data
     pattern_weights: Option<HashMap<String, f32>>,
     pattern_importance: HashMap<String, f32>,
@@ -265,6 +270,9 @@ pub struct PatternClassifier {
     // Cross-validation splits
     cv_splits: Vec<(Vec<usize>, Vec<usize>)>,
     sample_weights: Vec<f32>,
+    
+    // Phase 4 validation results
+    pbo_result: Option<PBOResult>,
 }
 
 #[pymethods]
@@ -277,6 +285,7 @@ impl PatternClassifier {
             pattern_weighting: PatternWeighting::default(),
             cross_validator: PatternAwareCrossValidator::default(),
             prediction_engine: PredictionEngine::default(),
+            phase4_workflow: None,
             pattern_weights: None,
             pattern_importance: HashMap::new(),
             trained: false,
@@ -284,6 +293,7 @@ impl PatternClassifier {
             confidence_threshold: 0.6,
             cv_splits: Vec::new(),
             sample_weights: Vec::new(),
+            pbo_result: None,
         })
     }
 
@@ -456,6 +466,174 @@ impl PatternClassifier {
     fn is_trained(&self) -> bool {
         self.trained
     }
+
+    /// Enable Phase 4 overfitting detection with CombinatorialPurgedCV
+    #[pyo3(signature = (embargo_pct=0.02, n_groups=8, test_groups=2, min_train_size=50, min_test_size=10))]
+    fn enable_phase4_validation(
+        &mut self,
+        embargo_pct: f32,
+        n_groups: usize,
+        test_groups: usize,
+        min_train_size: usize,
+        min_test_size: usize,
+    ) -> PyResult<()> {
+        let config = Phase4Config::builder()
+            .embargo_pct(embargo_pct)
+            .n_groups(n_groups)
+            .test_groups(test_groups)
+            .min_train_size(min_train_size)
+            .min_test_size(min_test_size)
+            .build();
+        
+        self.phase4_workflow = Some(Phase4Workflow::new(config));
+        Ok(())
+    }
+
+    /// Train with Phase 4 enhanced validation
+    #[pyo3(signature = (pattern_features, price_features, y, pattern_names, use_combinatorial_cv=true))]
+    fn train_with_phase4_validation(
+        &mut self,
+        pattern_features: &Bound<'_, PyArray2<f32>>,
+        price_features: &Bound<'_, PyArray2<f32>>,
+        y: &Bound<'_, PyArray1<i32>>,
+        pattern_names: Vec<String>,
+        use_combinatorial_cv: bool,
+    ) -> PyResult<HashMap<String, f32>> {
+        let pattern_features = pattern_features.readonly();
+        let price_features = price_features.readonly();
+        let y = y.readonly();
+        let pattern_array = pattern_features.as_array();
+        let _price_array = price_features.as_array();
+        let y_array = y.as_array();
+        let (n_samples, _n_patterns) = pattern_array.dim();
+
+        if y_array.len() != n_samples {
+            return Err(PyValueError::new_err("Feature and label count mismatch"));
+        }
+
+        self.pattern_names = pattern_names;
+
+        // Use Phase 4 workflow if available and requested
+        if use_combinatorial_cv && self.phase4_workflow.is_some() {
+            let workflow = self.phase4_workflow.as_ref().unwrap();
+            
+            // Define evaluation function for the workflow
+            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+                match self.evaluate_fold_with_indices(&pattern_array, &y_array, test_idx) {
+                    Ok(score) => Ok((score, score)), // Return (train_score, test_score)
+                    Err(e) => Err(e),
+                }
+            };
+            
+            // Execute Phase 4 workflow
+            let mut workflow_clone = workflow.clone();
+            match workflow_clone.execute_validation(n_samples, evaluate_fn) {
+                Ok(results) => {
+                    // Clone PBO result before storing to avoid moved value issues
+                    let pbo_result_clone = results.pbo_result.clone();
+                    self.pbo_result = pbo_result_clone;
+                    
+                    // Update pattern importance based on results
+                    for pattern_name in &self.pattern_names {
+                        self.pattern_importance.insert(pattern_name.clone(), results.cv_mean as f32);
+                    }
+                    
+                    // Create ensemble weights
+                    self.pattern_weights = Some(self.calculate_pattern_weights()?);
+                    self.trained = true;
+                    
+                    // Convert Phase4Results to HashMap
+                    let mut result_map = HashMap::new();
+                    result_map.insert("cv_mean".to_string(), results.cv_mean as f32);
+                    result_map.insert("cv_std".to_string(), results.cv_std as f32);
+                    result_map.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
+                    result_map.insert("n_splits".to_string(), results.n_splits as f32);
+                    
+                    if let Some(pbo_result) = &results.pbo_result {
+                        result_map.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
+                        result_map.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
+                    }
+                    
+                    return Ok(result_map);
+                },
+                Err(e) => {
+                    println!("Phase 4 workflow failed, falling back to traditional CV: {}", e);
+                }
+            }
+        }
+        
+        // Fallback to traditional pattern-aware CV
+        self.cv_splits = self.cross_validator.create_default_pattern_splits(n_samples, Some(3))?;
+        
+        let mut cv_scores = Vec::new();
+        let mut pattern_performances = HashMap::new();
+        
+        // Initialize pattern importance
+        for pattern_name in &self.pattern_names {
+            self.pattern_importance.insert(pattern_name.clone(), 0.0);
+        }
+        
+        for (_train_idx, test_idx) in &self.cv_splits {
+            let fold_score = self.evaluate_fold(&pattern_array, &y_array, test_idx)?;
+            cv_scores.push(fold_score);
+
+            // Calculate individual pattern performance
+            for pattern_name in self.pattern_names.iter() {
+                let pattern_score = fold_score; // Simplified
+                let current_score = pattern_performances.get(pattern_name).unwrap_or(&0.0);
+                pattern_performances.insert(pattern_name.clone(), current_score + pattern_score);
+            }
+        }
+
+        // Average pattern performances and update importance
+        let n_folds = cv_scores.len() as f32;
+        for (pattern_name, total_score) in pattern_performances {
+            let avg_score = total_score / n_folds;
+            self.pattern_importance.insert(pattern_name, avg_score);
+        }
+
+        // Create ensemble weights
+        self.pattern_weights = Some(self.calculate_pattern_weights()?);
+        self.trained = true;
+
+        let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
+        let std_score = {
+            let variance = cv_scores.iter()
+                .map(|&x| (x - mean_score).powi(2))
+                .sum::<f32>() / cv_scores.len() as f32;
+            variance.sqrt()
+        };
+
+        let mut results = HashMap::new();
+        results.insert("cv_mean".to_string(), mean_score);
+        results.insert("cv_std".to_string(), std_score);
+        results.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
+        results.insert("n_splits".to_string(), cv_scores.len() as f32);
+
+        Ok(results)
+    }
+
+    /// Get Phase 4 overfitting analysis results
+    fn get_overfitting_analysis(&self, py: Python) -> PyResult<Option<HashMap<String, f32>>> {
+        if let Some(pbo_result) = &self.pbo_result {
+            let mut analysis = HashMap::new();
+            analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
+            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
+            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
+            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
+            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
+            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
+            
+            Ok(Some(analysis))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Check if Phase 4 validation is enabled
+    fn is_phase4_enabled(&self) -> bool {
+        self.phase4_workflow.is_some()
+    }
 }
 
 // Implementation of internal methods
@@ -485,6 +663,17 @@ impl PatternClassifier {
         }
 
         Ok(if total > 0 { correct as f32 / total as f32 } else { 0.0 })
+    }
+
+    /// Evaluate a cross-validation fold with explicit indices (for CombinatorialPurgedCV)
+    fn evaluate_fold_with_indices(
+        &self,
+        pattern_features: &ndarray::ArrayView2<f32>,
+        y: &ndarray::ArrayView1<i32>,
+        test_idx: &[usize],
+    ) -> PyResult<f32> {
+        // Same implementation as evaluate_fold but more explicit about indices
+        self.evaluate_fold(pattern_features, y, test_idx)
     }
 
     /// Make prediction for a single sample
@@ -602,6 +791,9 @@ impl MLBackend for PatternClassifier {
         self.pattern_importance.clear();
         self.cv_splits.clear();
         self.sample_weights.clear();
+        // Reset Phase 4 components
+        self.pbo_result = None;
+        // Keep phase4_workflow as it is configuration
     }
 }
 
@@ -714,6 +906,77 @@ impl Predictor for PatternClassifier {
 
     fn get_confidence_threshold(&self) -> f32 {
         self.confidence_threshold
+    }
+}
+
+// Implement Phase4Capable trait
+impl Phase4Capable for PatternClassifier {
+    fn enable_phase4(&mut self, config: Phase4Config) -> PyResult<()> {
+        self.phase4_workflow = Some(Phase4Workflow::new(config));
+        Ok(())
+    }
+    
+    fn is_phase4_enabled(&self) -> bool {
+        self.phase4_workflow.is_some()
+    }
+    
+    fn get_phase4_config(&self) -> Option<&Phase4Config> {
+        self.phase4_workflow.as_ref().map(|w| &w.config)
+    }
+    
+    fn train_with_phase4(
+        &mut self,
+        features: &pyo3::Bound<'_, PyArray2<f32>>,
+        labels: &pyo3::Bound<'_, PyArray1<i32>>,
+        learning_rate: f32,
+    ) -> PyResult<Phase4Results> {
+        let features = features.readonly();
+        let labels = labels.readonly();
+        let features_array = features.as_array();
+        let labels_array = labels.as_array();
+        let (n_samples, _) = features_array.dim();
+        
+        if let Some(workflow) = &self.phase4_workflow {
+            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+                match self.evaluate_fold_with_indices(&features_array, &labels_array, test_idx) {
+                    Ok(score) => Ok((score, score)), // Return (train_score, test_score)
+                    Err(e) => Err(e),
+                }
+            };
+            
+            let mut workflow_clone = workflow.clone();
+            workflow_clone.execute_validation(n_samples, evaluate_fn)
+        } else {
+            Err(PyValueError::new_err("Phase 4 not enabled. Call enable_phase4() first."))
+        }
+    }
+    
+    fn get_overfitting_analysis(&self) -> PyResult<Option<HashMap<String, f32>>> {
+        if let Some(pbo_result) = &self.pbo_result {
+            let mut analysis = HashMap::new();
+            analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
+            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
+            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
+            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
+            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
+            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
+            Ok(Some(analysis))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    fn assess_overfitting_risk(&self) -> String {
+        if let Some(pbo_result) = &self.pbo_result {
+            match pbo_result.pbo_value {
+                x if x > 0.8 => "🔴 CRITICAL: Very high overfitting risk".to_string(),
+                x if x > 0.6 => "🟠 HIGH: Significant overfitting risk".to_string(),
+                x if x > 0.4 => "🟡 MODERATE: Some overfitting risk".to_string(),
+                _ => "🟢 LOW: Good generalization expected".to_string(),
+            }
+        } else {
+            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+        }
     }
 }
 

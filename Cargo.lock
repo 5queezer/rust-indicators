@@ -2170,6 +2170,7 @@ dependencies = [
  "cubecl",
  "cubecl-cuda",
  "cubecl-wgpu",
+ "lazy_static",
  "mimalloc",
  "ndarray",
  "ndarray-stats",
