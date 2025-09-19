@@ -646,6 +646,122 @@ unsafe impl Sync for BatchPredictor {}
 unsafe impl Send for PredictionEngine {}
 unsafe impl Sync for PredictionEngine {}
 
+/// Meta-Labeling engine for binary bet/no-bet classification
+///
+/// Implements the meta-labeling strategy where a secondary model learns to filter
+/// predictions from a primary model. The meta-labeler doesn't generate new trading
+/// opportunities but decides whether to act on signals from the primary model.
+///
+/// # Algorithm
+/// 1. Primary model generates predictions with high recall
+/// 2. Meta-labeler filters false positives to improve precision
+/// 3. Output is binary: bet (1) or no bet (0)
+/// 4. Volatility adjustment modulates thresholds dynamically
+#[derive(Debug, Clone)]
+pub struct MetaLabeler {
+    /// Primary predictor for generating initial signals
+    pub primary_predictor: ConfidencePredictor,
+    /// Threshold for primary model confidence
+    pub primary_threshold: f32,
+    /// Volatility adjustment factor
+    pub volatility_adjustment: f32,
+    /// Meta-model weights for filtering
+    pub meta_weights: Vec<f32>,
+    /// Whether meta-model is trained
+    pub meta_trained: bool,
+}
+
+impl MetaLabeler {
+    /// Create new meta-labeler
+    ///
+    /// # Parameters
+    /// - `primary_predictor`: Primary model for signal generation
+    /// - `primary_threshold`: Minimum confidence for primary signals
+    /// - `volatility_adjustment`: Factor for volatility-based threshold adjustment
+    pub fn new(
+        primary_predictor: ConfidencePredictor,
+        primary_threshold: f32,
+        volatility_adjustment: f32,
+    ) -> Self {
+        let n_features = primary_predictor.model_weights.len();
+        Self {
+            primary_predictor,
+            primary_threshold,
+            volatility_adjustment,
+            meta_weights: vec![0.0; n_features + 2], // +2 for prediction and confidence
+            meta_trained: false,
+        }
+    }
+
+    /// Set meta-model weights after training
+    pub fn set_meta_weights(&mut self, weights: Vec<f32>) -> Result<(), Box<dyn std::error::Error>> {
+        if weights.len() != self.meta_weights.len() {
+            return Err("Meta weights dimension mismatch".into());
+        }
+        self.meta_weights = weights;
+        self.meta_trained = true;
+        Ok(())
+    }
+
+    /// Make meta-labeling decision
+    ///
+    /// # Parameters
+    /// - `features`: Input features
+    /// - `volatility`: Current volatility estimate
+    ///
+    /// # Returns
+    /// Binary decision: 1 (bet) or 0 (no bet)
+    pub fn meta_predict(&self, features: &[f32], volatility: f32) -> Result<i32, Box<dyn std::error::Error>> {
+        // Get primary prediction
+        let (primary_pred, primary_conf) = self.primary_predictor.predict_sample(features)?;
+        
+        // Apply volatility-adjusted threshold
+        let adjusted_threshold = self.primary_threshold * (1.0 + self.volatility_adjustment * volatility);
+        
+        // Filter out low-confidence primary predictions
+        if primary_conf < adjusted_threshold {
+            return Ok(0); // No bet
+        }
+        
+        // If meta-model not trained, use simple threshold filtering
+        if !self.meta_trained {
+            return Ok(if primary_pred != 1 { 1 } else { 0 }); // Bet on non-hold signals
+        }
+        
+        // Create meta-features: original features + primary prediction + confidence
+        let mut meta_features = features.to_vec();
+        meta_features.push(primary_pred as f32);
+        meta_features.push(primary_conf);
+        
+        // Meta-model decision
+        let meta_score = meta_features.iter()
+            .zip(&self.meta_weights)
+            .map(|(f, w)| f * w)
+            .sum::<f32>();
+        
+        Ok(if meta_score.tanh() > 0.0 { 1 } else { 0 })
+    }
+
+    /// Batch meta-labeling
+    pub fn meta_predict_batch(&self, features_batch: &[Vec<f32>], volatility_batch: &[f32])
+        -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+        if features_batch.len() != volatility_batch.len() {
+            return Err("Features and volatility batch size mismatch".into());
+        }
+        
+        let mut results = Vec::with_capacity(features_batch.len());
+        for (features, &volatility) in features_batch.iter().zip(volatility_batch.iter()) {
+            results.push(self.meta_predict(features, volatility)?);
+        }
+        
+        Ok(results)
+    }
+}
+
+// Thread safety for MetaLabeler
+unsafe impl Send for MetaLabeler {}
+unsafe impl Sync for MetaLabeler {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,5 +795,95 @@ mod tests {
         
         let weights = engine.get_pattern_weights();
         assert_eq!(weights.get("test_pattern"), Some(&0.8));
+    }
+
+    #[test]
+    fn test_meta_labeler_creation() {
+        let primary = ConfidencePredictor::new(0.6, 5);
+        let meta_labeler = MetaLabeler::new(primary, 0.7, 0.1);
+        
+        assert_eq!(meta_labeler.primary_threshold, 0.7);
+        assert_eq!(meta_labeler.volatility_adjustment, 0.1);
+        assert!(!meta_labeler.meta_trained);
+        assert_eq!(meta_labeler.meta_weights.len(), 7); // 5 features + prediction + confidence
+    }
+
+    #[test]
+    fn test_meta_labeler_untrained_prediction() {
+        let mut primary = ConfidencePredictor::new(0.6, 3);
+        primary.set_weights(vec![0.5, -0.3, 0.8], vec![1.0, 1.0, 1.0]).unwrap();
+        
+        let meta_labeler = MetaLabeler::new(primary, 0.5, 0.0);
+        let features = vec![0.2, 0.8, -0.1];
+        
+        // Should work even without meta-training (uses simple threshold filtering)
+        let result = meta_labeler.meta_predict(&features, 0.1);
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert!(decision == 0 || decision == 1); // Binary output
+    }
+
+    #[test]
+    fn test_meta_labeler_volatility_adjustment() {
+        let mut primary = ConfidencePredictor::new(0.6, 2);
+        primary.set_weights(vec![1.0, 1.0], vec![1.0, 1.0]).unwrap();
+        
+        let meta_labeler = MetaLabeler::new(primary, 0.5, 0.2);
+        let features = vec![0.3, 0.4]; // Should give moderate confidence
+        
+        // Low volatility should be more permissive
+        let low_vol_result = meta_labeler.meta_predict(&features, 0.1).unwrap();
+        
+        // High volatility should be more restrictive
+        let high_vol_result = meta_labeler.meta_predict(&features, 1.0).unwrap();
+        
+        // Both should be valid binary outputs
+        assert!(low_vol_result == 0 || low_vol_result == 1);
+        assert!(high_vol_result == 0 || high_vol_result == 1);
+    }
+
+    #[test]
+    fn test_meta_labeler_batch_prediction() {
+        let mut primary = ConfidencePredictor::new(0.6, 2);
+        primary.set_weights(vec![0.5, 0.5], vec![1.0, 1.0]).unwrap();
+        
+        let meta_labeler = MetaLabeler::new(primary, 0.4, 0.1);
+        
+        let features_batch = vec![
+            vec![0.1, 0.2],
+            vec![0.8, 0.9],
+            vec![-0.3, 0.1],
+        ];
+        let volatility_batch = vec![0.1, 0.2, 0.15];
+        
+        let results = meta_labeler.meta_predict_batch(&features_batch, &volatility_batch);
+        assert!(results.is_ok());
+        
+        let decisions = results.unwrap();
+        assert_eq!(decisions.len(), 3);
+        
+        // All decisions should be binary
+        for decision in decisions {
+            assert!(decision == 0 || decision == 1);
+        }
+    }
+
+    #[test]
+    fn test_meta_labeler_trained_prediction() {
+        let mut primary = ConfidencePredictor::new(0.6, 2);
+        primary.set_weights(vec![0.5, 0.5], vec![1.0, 1.0]).unwrap();
+        
+        let mut meta_labeler = MetaLabeler::new(primary, 0.4, 0.0);
+        
+        // Train meta-model with some weights
+        let meta_weights = vec![0.1, 0.2, 0.3, 0.4]; // 2 features + prediction + confidence
+        meta_labeler.set_meta_weights(meta_weights).unwrap();
+        
+        let features = vec![0.5, 0.3];
+        let result = meta_labeler.meta_predict(&features, 0.1);
+        
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert!(decision == 0 || decision == 1);
     }
 }

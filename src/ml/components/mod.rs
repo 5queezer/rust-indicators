@@ -11,5 +11,5 @@ pub mod prediction;
 
 pub use cross_validation::{PurgedCrossValidator, PatternAwareCrossValidator};
 pub use sample_weighting::{VolatilityWeighting, PatternWeighting, SampleWeightCalculator};
-pub use label_generation::{TripleBarrierLabeler, PatternLabeler, ComponentLabelGenerator};
-pub use prediction::{ConfidencePredictor, BatchPredictor, PredictionEngine};
+pub use label_generation::{TradingSide, TripleBarrierLabeler, PatternLabeler, ComponentLabelGenerator};
+pub use prediction::{ConfidencePredictor, BatchPredictor, PredictionEngine, MetaLabeler};
