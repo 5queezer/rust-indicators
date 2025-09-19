@@ -33,6 +33,10 @@
 
 pub mod series;
 pub mod bars;
+pub mod fractional_diff;
+pub mod stationarity;
 
 pub use series::FinancialSeries;
 pub use bars::{BarType, Bar, Tick, BarBuilder, ImbalanceTracker};
+pub use fractional_diff::FractionalDifferentiator;
+pub use stationarity::StationarityTests;

@@ -315,7 +315,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ToPyArray, ndarray};
+use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
 use std::collections::HashMap;
 
 use crate::extract_safe;
