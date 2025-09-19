@@ -38,14 +38,12 @@ pub use unified_classifier::UnifiedClassifier;
 
 // Re-export shared components for convenience
 pub use crate::ml::components::{
-    ComponentLabelGenerator, PredictionEngine, SampleWeightCalculator,
-    PurgedCrossValidator, PatternAwareCrossValidator,
-    TripleBarrierLabeler, PatternLabeler,
-    ConfidencePredictor, BatchPredictor,
-    VolatilityWeighting, PatternWeighting,
+    BatchPredictor, ComponentLabelGenerator, ConfidencePredictor, PatternAwareCrossValidator,
+    PatternLabeler, PatternWeighting, PredictionEngine, PurgedCrossValidator,
+    SampleWeightCalculator, TripleBarrierLabeler, VolatilityWeighting,
 };
 
 // Re-export traits
 pub use crate::ml::traits::{
-    MLBackend, LabelGenerator, CrossValidator, Predictor, UnifiedMLBackend,
+    CrossValidator, LabelGenerator, MLBackend, Predictor, UnifiedMLBackend,
 };

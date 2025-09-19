@@ -3,8 +3,8 @@
 //! Unified error handling and result types for ML components to provide
 //! consistent error reporting and reduce code duplication across models.
 
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::exceptions::{PyValueError, PyRuntimeError, PyTypeError};
 use std::fmt;
 
 /// Unified ML error types for consistent error handling across all models
@@ -16,7 +16,7 @@ pub enum MLError {
     TrainingError(String),
     /// Prediction-related errors
     PredictionError(String),
-    /// Phase 4 validation errors
+    /// Advanced Cross-Validation validation errors
     Phase4Error(String),
     /// Cross-validation errors
     CrossValidationError(String),
@@ -34,7 +34,7 @@ impl fmt::Display for MLError {
             MLError::ValidationError(msg) => write!(f, "Validation Error: {}", msg),
             MLError::TrainingError(msg) => write!(f, "Training Error: {}", msg),
             MLError::PredictionError(msg) => write!(f, "Prediction Error: {}", msg),
-            MLError::Phase4Error(msg) => write!(f, "Phase 4 Error: {}", msg),
+            MLError::Phase4Error(msg) => write!(f, "Advanced Cross-Validation Error: {}", msg),
             MLError::CrossValidationError(msg) => write!(f, "Cross-Validation Error: {}", msg),
             MLError::ConfigurationError(msg) => write!(f, "Configuration Error: {}", msg),
             MLError::DataError(msg) => write!(f, "Data Error: {}", msg),
@@ -106,10 +106,10 @@ impl TrainingResults {
         dict.insert("cv_std".to_string(), self.cv_std);
         dict.insert("n_splits".to_string(), self.n_splits as f32);
         dict.insert("training_time_ms".to_string(), self.training_time_ms as f32);
-        
+
         // Add additional metrics
         dict.extend(self.additional_metrics.clone());
-        
+
         dict
     }
 }
@@ -124,7 +124,12 @@ pub struct PredictionResult {
 }
 
 impl PredictionResult {
-    pub fn new(prediction: i32, confidence: f32, model_type: String, processing_time_us: u64) -> Self {
+    pub fn new(
+        prediction: i32,
+        confidence: f32,
+        model_type: String,
+        processing_time_us: u64,
+    ) -> Self {
         Self {
             prediction,
             confidence,
@@ -181,11 +186,7 @@ impl ErrorHandler {
     }
 
     /// Validate feature count
-    pub fn validate_feature_count(
-        actual: usize,
-        expected: usize,
-        context: &str,
-    ) -> MLResult<()> {
+    pub fn validate_feature_count(actual: usize, expected: usize, context: &str) -> MLResult<()> {
         if actual != expected {
             return Err(MLError::ValidationError(format!(
                 "{}: Feature count mismatch (expected {}, got {})",
@@ -206,8 +207,8 @@ impl ErrorHandler {
         Ok(threshold)
     }
 
-    /// Validate Phase 4 configuration
-    pub fn validate_phase4_config(
+    /// Validate Advanced Cross-Validation configuration
+    pub fn validate_advanced_cross_validation_config(
         n_samples: usize,
         n_groups: usize,
         test_groups: usize,
@@ -224,7 +225,7 @@ impl ErrorHandler {
         let min_required = min_train_size + min_test_size;
         if n_samples < min_required {
             return Err(MLError::ValidationError(format!(
-                "Insufficient samples for Phase 4: {} < {} (min_train + min_test)",
+                "Insufficient samples for Advanced Cross-Validation: {} < {} (min_train + min_test)",
                 n_samples, min_required
             )));
         }
@@ -247,8 +248,8 @@ impl ErrorHandler {
         MLError::PredictionError(format!("{}: {}", context, msg))
     }
 
-    /// Create Phase 4 error with context
-    pub fn phase4_error(msg: &str, context: &str) -> MLError {
+    /// Create Advanced Cross-Validation error with context
+    pub fn advanced_cross_validation_error(msg: &str, context: &str) -> MLError {
         MLError::Phase4Error(format!("{}: {}", context, msg))
     }
 }
@@ -296,9 +297,11 @@ impl ResultBuilder {
     ) -> TrainingResults {
         let cv_mean = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
         let cv_std = {
-            let variance = cv_scores.iter()
+            let variance = cv_scores
+                .iter()
                 .map(|&x| (x - cv_mean).powi(2))
-                .sum::<f32>() / cv_scores.len() as f32;
+                .sum::<f32>()
+                / cv_scores.len() as f32;
             variance.sqrt()
         };
 
@@ -356,10 +359,10 @@ mod tests {
     fn test_error_handler_validation() {
         assert!(ErrorHandler::validate_dimensions((100, 10), 100, "test").is_ok());
         assert!(ErrorHandler::validate_dimensions((100, 10), 50, "test").is_err());
-        
+
         assert!(ErrorHandler::validate_trained(true, "TestModel").is_ok());
         assert!(ErrorHandler::validate_trained(false, "TestModel").is_err());
-        
+
         assert!(ErrorHandler::validate_confidence_threshold(0.5).is_ok());
         assert!(ErrorHandler::validate_confidence_threshold(1.5).is_err());
     }
@@ -377,7 +380,7 @@ mod tests {
         let scores = vec![0.8, 0.85, 0.75, 0.9];
         let tracker = PerformanceTracker::new();
         let results = ResultBuilder::training_results(&scores, "TestModel", &tracker);
-        
+
         assert_eq!(results.model_type, "TestModel");
         assert_eq!(results.n_splits, 4);
         assert!(results.cv_mean > 0.0);

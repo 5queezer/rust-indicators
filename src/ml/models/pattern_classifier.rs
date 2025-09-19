@@ -229,18 +229,19 @@
 //! - Safe concurrent access from Python
 //! - No shared mutable state
 
-use pyo3::prelude::*;
+use numpy::{ndarray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 use crate::extract_safe;
-use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
-    PatternLabeler, PatternWeighting, PatternAwareCrossValidator, PredictionEngine,
-    PBOResult,
-    phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
+    advanced_cross_validation_integration::{
+        Phase4Capable, Phase4Config, Phase4Results, Phase4Workflow,
+    },
+    PBOResult, PatternAwareCrossValidator, PatternLabeler, PatternWeighting, PredictionEngine,
 };
+use crate::ml::traits::{CrossValidator, LabelGenerator, MLBackend, Predictor};
 
 /// Pattern recognition classifier with ensemble methods
 ///
@@ -251,27 +252,28 @@ use crate::ml::components::{
 pub struct PatternClassifier {
     // Pattern-specific components
     pattern_labeler: PatternLabeler,
+    #[allow(dead_code)]
     pattern_weighting: PatternWeighting,
     cross_validator: PatternAwareCrossValidator,
     prediction_engine: PredictionEngine,
-    
-    // Phase 4 integration
-    phase4_workflow: Option<Phase4Workflow>,
-    
+
+    // Advanced Cross-Validation integration
+    advanced_cross_validation_workflow: Option<Phase4Workflow>,
+
     // Pattern ensemble data
     pattern_weights: Option<HashMap<String, f32>>,
     pattern_importance: HashMap<String, f32>,
-    
+
     // Training state
     trained: bool,
     pattern_names: Vec<String>,
     confidence_threshold: f32,
-    
+
     // Cross-validation splits
     cv_splits: Vec<(Vec<usize>, Vec<usize>)>,
     sample_weights: Vec<f32>,
-    
-    // Phase 4 validation results
+
+    // Advanced Cross-Validation validation results
     pbo_result: Option<PBOResult>,
 }
 
@@ -285,7 +287,7 @@ impl PatternClassifier {
             pattern_weighting: PatternWeighting::default(),
             cross_validator: PatternAwareCrossValidator::default(),
             prediction_engine: PredictionEngine::default(),
-            phase4_workflow: None,
+            advanced_cross_validation_workflow: None,
             pattern_weights: None,
             pattern_importance: HashMap::new(),
             trained: false,
@@ -324,7 +326,9 @@ impl PatternClassifier {
         }
 
         // Create pattern-aware cross-validation splits
-        self.cv_splits = self.cross_validator.create_default_pattern_splits(n_samples, Some(3))?;
+        self.cv_splits = self
+            .cross_validator
+            .create_default_pattern_splits(n_samples, Some(3))?;
         self.pattern_names = pattern_names;
 
         let mut cv_scores = Vec::new();
@@ -345,7 +349,8 @@ impl PatternClassifier {
                 if i < n_patterns {
                     let pattern_score = fold_score; // Simplified
                     let current_score = pattern_performances.get(pattern_name).unwrap_or(&0.0);
-                    pattern_performances.insert(pattern_name.clone(), current_score + pattern_score);
+                    pattern_performances
+                        .insert(pattern_name.clone(), current_score + pattern_score);
                 }
             }
         }
@@ -362,9 +367,11 @@ impl PatternClassifier {
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
         let std_score = {
-            let variance = cv_scores.iter()
+            let variance = cv_scores
+                .iter()
                 .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>() / cv_scores.len() as f32;
+                .sum::<f32>()
+                / cv_scores.len() as f32;
             variance.sqrt()
         };
 
@@ -411,7 +418,9 @@ impl PatternClassifier {
 
         let pattern_signal = if !weighted_signals.is_empty() {
             weighted_signals.iter().sum::<f32>() / weighted_signals.len() as f32
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let prediction = if pattern_signal > 0.15 {
             2 // Buy
@@ -423,7 +432,9 @@ impl PatternClassifier {
 
         let confidence = if active_patterns > 0 {
             (total_confidence / active_patterns as f32).min(1.0)
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         // Return pattern contributions for interpretability
         let mut pattern_contributions = vec![0.0f32; self.pattern_names.len()];
@@ -444,7 +455,9 @@ impl PatternClassifier {
 
     /// Get pattern importance scores
     fn get_pattern_importance(&self, py: Python) -> PyResult<Py<PyArray1<f32>>> {
-        let importance_vec: Vec<f32> = self.pattern_names.iter()
+        let importance_vec: Vec<f32> = self
+            .pattern_names
+            .iter()
             .map(|name| self.pattern_importance.get(name).unwrap_or(&0.0).clone())
             .collect();
 
@@ -467,9 +480,9 @@ impl PatternClassifier {
         self.trained
     }
 
-    /// Enable Phase 4 overfitting detection with CombinatorialPurgedCV
+    /// Enable Advanced Cross-Validation overfitting detection with CombinatorialPurgedCV
     #[pyo3(signature = (embargo_pct=0.02, n_groups=8, test_groups=2, min_train_size=50, min_test_size=10))]
-    fn enable_phase4_validation(
+    fn enable_advanced_cross_validation_validation(
         &mut self,
         embargo_pct: f32,
         n_groups: usize,
@@ -484,14 +497,14 @@ impl PatternClassifier {
             .min_train_size(min_train_size)
             .min_test_size(min_test_size)
             .build();
-        
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
+
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
         Ok(())
     }
 
-    /// Train with Phase 4 enhanced validation
+    /// Train with Advanced Cross-Validation enhanced validation
     #[pyo3(signature = (pattern_features, price_features, y, pattern_names, use_combinatorial_cv=true))]
-    fn train_with_phase4_validation(
+    fn train_with_advanced_cross_validation_validation(
         &mut self,
         pattern_features: &Bound<'_, PyArray2<f32>>,
         price_features: &Bound<'_, PyArray2<f32>>,
@@ -513,66 +526,75 @@ impl PatternClassifier {
 
         self.pattern_names = pattern_names;
 
-        // Use Phase 4 workflow if available and requested
-        if use_combinatorial_cv && self.phase4_workflow.is_some() {
-            let workflow = self.phase4_workflow.as_ref().unwrap();
-            
+        // Use Advanced Cross-Validation workflow if available and requested
+        if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
+            let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+
             // Define evaluation function for the workflow
-            let evaluate_fn = |_train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+            let evaluate_fn = |_train_idx: &[usize],
+                               test_idx: &[usize],
+                               _combo_id: usize|
+             -> PyResult<(f32, f32)> {
                 match self.evaluate_fold_with_indices(&pattern_array, &y_array, test_idx) {
                     Ok(score) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
                 }
             };
-            
-            // Execute Phase 4 workflow
+
+            // Execute Advanced Cross-Validation workflow
             let mut workflow_clone = workflow.clone();
             match workflow_clone.execute_validation(n_samples, evaluate_fn) {
                 Ok(results) => {
                     // Clone PBO result before storing to avoid moved value issues
                     let pbo_result_clone = results.pbo_result.clone();
                     self.pbo_result = pbo_result_clone;
-                    
+
                     // Update pattern importance based on results
                     for pattern_name in &self.pattern_names {
-                        self.pattern_importance.insert(pattern_name.clone(), results.cv_mean as f32);
+                        self.pattern_importance
+                            .insert(pattern_name.clone(), results.cv_mean as f32);
                     }
-                    
+
                     // Create ensemble weights
                     self.pattern_weights = Some(self.calculate_pattern_weights()?);
                     self.trained = true;
-                    
+
                     // Convert Phase4Results to HashMap
                     let mut result_map = HashMap::new();
                     result_map.insert("cv_mean".to_string(), results.cv_mean as f32);
                     result_map.insert("cv_std".to_string(), results.cv_std as f32);
                     result_map.insert("n_patterns".to_string(), self.pattern_names.len() as f32);
                     result_map.insert("n_splits".to_string(), results.n_splits as f32);
-                    
+
                     if let Some(pbo_result) = &results.pbo_result {
                         result_map.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-                        result_map.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
+                        result_map.insert(
+                            "is_overfit".to_string(),
+                            if pbo_result.is_overfit { 1.0 } else { 0.0 },
+                        );
                     }
-                    
+
                     return Ok(result_map);
-                },
+                }
                 Err(e) => {
-                    println!("Phase 4 workflow failed, falling back to traditional CV: {}", e);
+                    println!("Advanced Cross-Validation workflow failed, falling back to traditional CV: {}", e);
                 }
             }
         }
-        
+
         // Fallback to traditional pattern-aware CV
-        self.cv_splits = self.cross_validator.create_default_pattern_splits(n_samples, Some(3))?;
-        
+        self.cv_splits = self
+            .cross_validator
+            .create_default_pattern_splits(n_samples, Some(3))?;
+
         let mut cv_scores = Vec::new();
         let mut pattern_performances = HashMap::new();
-        
+
         // Initialize pattern importance
         for pattern_name in &self.pattern_names {
             self.pattern_importance.insert(pattern_name.clone(), 0.0);
         }
-        
+
         for (_train_idx, test_idx) in &self.cv_splits {
             let fold_score = self.evaluate_fold(&pattern_array, &y_array, test_idx)?;
             cv_scores.push(fold_score);
@@ -598,9 +620,11 @@ impl PatternClassifier {
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
         let std_score = {
-            let variance = cv_scores.iter()
+            let variance = cv_scores
+                .iter()
                 .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>() / cv_scores.len() as f32;
+                .sum::<f32>()
+                / cv_scores.len() as f32;
             variance.sqrt()
         };
 
@@ -613,26 +637,41 @@ impl PatternClassifier {
         Ok(results)
     }
 
-    /// Get Phase 4 overfitting analysis results
+    /// Get Advanced Cross-Validation overfitting analysis results
     fn get_overfitting_analysis(&self, _py: Python) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
-            
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
+
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
 
-    /// Check if Phase 4 validation is enabled
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+    /// Check if Advanced Cross-Validation validation is enabled
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
 }
 
@@ -662,7 +701,11 @@ impl PatternClassifier {
             }
         }
 
-        Ok(if total > 0 { correct as f32 / total as f32 } else { 0.0 })
+        Ok(if total > 0 {
+            correct as f32 / total as f32
+        } else {
+            0.0
+        })
     }
 
     /// Evaluate a cross-validation fold with explicit indices (for CombinatorialPurgedCV)
@@ -737,7 +780,9 @@ impl MLBackend for PatternClassifier {
         }
 
         // Create pattern-aware cross-validation splits
-        self.cv_splits = self.cross_validator.create_default_pattern_splits(n_samples, Some(3))?;
+        self.cv_splits = self
+            .cross_validator
+            .create_default_pattern_splits(n_samples, Some(3))?;
 
         let mut cv_scores = Vec::new();
 
@@ -753,9 +798,11 @@ impl MLBackend for PatternClassifier {
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
         let std_score = {
-            let variance = cv_scores.iter()
+            let variance = cv_scores
+                .iter()
                 .map(|&x| (x - mean_score).powi(2))
-                .sum::<f32>() / cv_scores.len() as f32;
+                .sum::<f32>()
+                / cv_scores.len() as f32;
             variance.sqrt()
         };
 
@@ -791,9 +838,9 @@ impl MLBackend for PatternClassifier {
         self.pattern_importance.clear();
         self.cv_splits.clear();
         self.sample_weights.clear();
-        // Reset Phase 4 components
+        // Reset Advanced Cross-Validation components
         self.pbo_result = None;
-        // Keep phase4_workflow as it is configuration
+        // Keep advanced_cross_validation_workflow as it is configuration
     }
 }
 
@@ -807,7 +854,9 @@ impl LabelGenerator for PatternClassifier {
         _stop_mult: f32,
         _max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("PatternClassifier uses pattern-based labels"))
+        Err(PyValueError::new_err(
+            "PatternClassifier uses pattern-based labels",
+        ))
     }
 
     fn create_pattern_labels<'py>(
@@ -816,7 +865,8 @@ impl LabelGenerator for PatternClassifier {
         ohlc_data: crate::ml::traits::OHLCData<'py>,
         params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
+        self.pattern_labeler
+            .create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(
@@ -825,7 +875,9 @@ impl LabelGenerator for PatternClassifier {
         _returns: PyReadonlyArray1<'py, f32>,
         _volatility: Option<PyReadonlyArray1<'py, f32>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        Err(PyValueError::new_err("Use calculate_pattern_sample_weights for pattern-based weighting"))
+        Err(PyValueError::new_err(
+            "Use calculate_pattern_sample_weights for pattern-based weighting",
+        ))
     }
 }
 
@@ -836,7 +888,8 @@ impl CrossValidator for PatternClassifier {
         n_splits: usize,
         embargo_pct: f32,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.cross_validator.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
+        self.cross_validator
+            .create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
     fn create_pattern_aware_cv_splits(
@@ -845,7 +898,8 @@ impl CrossValidator for PatternClassifier {
         n_splits: usize,
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.cross_validator.create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
+        self.cross_validator
+            .create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
     }
 
     fn validate_cv_splits(
@@ -854,7 +908,8 @@ impl CrossValidator for PatternClassifier {
         min_train_size: usize,
         min_test_size: usize,
     ) -> bool {
-        self.cross_validator.validate_cv_splits(splits, min_train_size, min_test_size)
+        self.cross_validator
+            .validate_cv_splits(splits, min_train_size, min_test_size)
     }
 }
 
@@ -888,12 +943,14 @@ impl Predictor for PatternClassifier {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.prediction_engine.get_prediction_explanation(py, features)
+        self.prediction_engine
+            .get_prediction_explanation(py, features)
     }
 
     fn set_confidence_threshold_unchecked(&mut self, threshold: f32) {
         self.confidence_threshold = threshold;
-        self.prediction_engine.set_confidence_threshold_unchecked(threshold);
+        self.prediction_engine
+            .set_confidence_threshold_unchecked(threshold);
     }
 
     fn get_confidence_threshold(&self) -> f32 {
@@ -903,20 +960,22 @@ impl Predictor for PatternClassifier {
 
 // Implement Phase4Capable trait
 impl Phase4Capable for PatternClassifier {
-    fn enable_phase4(&mut self, config: Phase4Config) -> PyResult<()> {
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
+    fn enable_advanced_cross_validation(&mut self, config: Phase4Config) -> PyResult<()> {
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
         Ok(())
     }
-    
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
-    
-    fn get_phase4_config(&self) -> Option<&Phase4Config> {
-        self.phase4_workflow.as_ref().map(|w| &w.config)
+
+    fn get_advanced_cross_validation_config(&self) -> Option<&Phase4Config> {
+        self.advanced_cross_validation_workflow
+            .as_ref()
+            .map(|w| &w.config)
     }
-    
-    fn train_with_phase4(
+
+    fn train_with_advanced_cross_validation(
         &mut self,
         features: &pyo3::Bound<'_, PyArray2<f32>>,
         labels: &pyo3::Bound<'_, PyArray1<i32>>,
@@ -927,37 +986,55 @@ impl Phase4Capable for PatternClassifier {
         let features_array = features.as_array();
         let labels_array = labels.as_array();
         let (n_samples, _) = features_array.dim();
-        
-        if let Some(workflow) = &self.phase4_workflow {
-            let evaluate_fn = |_train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+
+        if let Some(workflow) = &self.advanced_cross_validation_workflow {
+            let evaluate_fn = |_train_idx: &[usize],
+                               test_idx: &[usize],
+                               _combo_id: usize|
+             -> PyResult<(f32, f32)> {
                 match self.evaluate_fold_with_indices(&features_array, &labels_array, test_idx) {
                     Ok(score) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
                 }
             };
-            
+
             let mut workflow_clone = workflow.clone();
             workflow_clone.execute_validation(n_samples, evaluate_fn)
         } else {
-            Err(PyValueError::new_err("Phase 4 not enabled. Call enable_phase4() first."))
+            Err(PyValueError::new_err("Advanced Cross-Validation not enabled. Call enable_advanced_cross_validation() first."))
         }
     }
-    
+
     fn get_overfitting_analysis(&self) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
-    
+
     fn assess_overfitting_risk(&self) -> String {
         if let Some(pbo_result) = &self.pbo_result {
             match pbo_result.pbo_value {
@@ -967,7 +1044,7 @@ impl Phase4Capable for PatternClassifier {
                 _ => "🟢 LOW: Good generalization expected".to_string(),
             }
         } else {
-            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+            "❓ UNKNOWN: Enable Advanced Cross-Validation validation for assessment".to_string()
         }
     }
 }

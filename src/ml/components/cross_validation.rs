@@ -4,9 +4,9 @@
 //! in time series data through proper embargo periods and purged splits. It implements
 //! the patterns from both pattern_model_example.rs and classifier_model_example.rs.
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use crate::ml::traits::CrossValidator;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 /// Purged cross-validation implementation with embargo periods
 ///
@@ -15,7 +15,7 @@ use crate::ml::traits::CrossValidator;
 /// production-ready patterns from ScientificTradingClassifier.
 ///
 /// # Thread Safety
-/// 
+///
 /// This struct is `Send + Sync` to support multi-threaded access from Python.
 #[derive(Debug, Clone)]
 pub struct PurgedCrossValidator {
@@ -75,7 +75,11 @@ impl CrossValidator for PurgedCrossValidator {
 
         for fold in 0..n_splits {
             let test_start = fold * fold_size;
-            let test_end = if fold == n_splits - 1 { n_samples } else { (fold + 1) * fold_size };
+            let test_end = if fold == n_splits - 1 {
+                n_samples
+            } else {
+                (fold + 1) * fold_size
+            };
 
             if test_start >= test_end {
                 continue;
@@ -95,7 +99,9 @@ impl CrossValidator for PurgedCrossValidator {
             }
 
             // Only add split if it meets minimum size requirements
-            if train_indices.len() >= self.min_train_size && test_indices.len() >= self.min_test_size {
+            if train_indices.len() >= self.min_train_size
+                && test_indices.len() >= self.min_test_size
+            {
                 splits.push((train_indices, test_indices));
             }
         }
@@ -116,7 +122,7 @@ impl CrossValidator for PurgedCrossValidator {
         // Use pattern duration * 2 as minimum embargo to prevent pattern overlap
         let pattern_embargo = (pattern_duration * 2).max(10);
         let embargo_pct = (pattern_embargo as f32) / (n_samples as f32);
-        
+
         self.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
@@ -180,7 +186,6 @@ impl PatternAwareCrossValidator {
     }
 }
 
-
 impl PatternAwareCrossValidator {
     /// Create pattern-aware CV splits with default pattern duration
     ///
@@ -211,7 +216,8 @@ impl CrossValidator for PatternAwareCrossValidator {
         n_splits: usize,
         embargo_pct: f32,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.base_validator.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
+        self.base_validator
+            .create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
     fn create_pattern_aware_cv_splits(
@@ -220,7 +226,8 @@ impl CrossValidator for PatternAwareCrossValidator {
         n_splits: usize,
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.base_validator.create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
+        self.base_validator
+            .create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
     }
 
     fn validate_cv_splits(
@@ -229,7 +236,8 @@ impl CrossValidator for PatternAwareCrossValidator {
         min_train_size: usize,
         min_test_size: usize,
     ) -> bool {
-        self.base_validator.validate_cv_splits(splits, min_train_size, min_test_size)
+        self.base_validator
+            .validate_cv_splits(splits, min_train_size, min_test_size)
     }
 }
 
@@ -247,10 +255,10 @@ mod tests {
     fn test_purged_cv_basic() {
         let validator = PurgedCrossValidator::new(0.1, 10, 5);
         let splits = validator.create_purged_cv_splits(100, 3, 0.1).unwrap();
-        
+
         assert!(!splits.is_empty());
         assert!(splits.len() <= 3);
-        
+
         // Verify no overlap between train and test
         for (train, test) in &splits {
             for &test_idx in test {
@@ -262,10 +270,12 @@ mod tests {
     #[test]
     fn test_pattern_aware_cv() {
         let validator = PatternAwareCrossValidator::new(0.05, 5);
-        let splits = validator.create_default_pattern_splits(100, Some(3)).unwrap();
-        
+        let splits = validator
+            .create_default_pattern_splits(100, Some(3))
+            .unwrap();
+
         assert!(!splits.is_empty());
-        
+
         // Verify splits are valid
         assert!(validator.validate_cv_splits(&splits, 10, 5));
     }
@@ -274,7 +284,7 @@ mod tests {
     fn test_insufficient_samples() {
         let validator = PurgedCrossValidator::new(0.1, 10, 5);
         let result = validator.create_purged_cv_splits(5, 3, 0.1);
-        
+
         assert!(result.is_err());
     }
 }
@@ -358,7 +368,7 @@ impl CombinatorialPurgedCV {
     ) -> Self {
         let base_cv = PurgedCrossValidator::new(embargo_pct, min_train_size, min_test_size);
         let embargo_periods = ((n_groups as f32 * embargo_pct) as usize).max(1);
-        
+
         Self {
             base_cv,
             n_groups,
@@ -375,7 +385,6 @@ impl CombinatorialPurgedCV {
     }
 }
 
-
 impl CombinatorialPurgedCV {
     /// Generate all C(N,k) combinations of test groups
     ///
@@ -384,10 +393,16 @@ impl CombinatorialPurgedCV {
     pub fn generate_combinations(&self) -> Vec<Vec<usize>> {
         let groups: Vec<usize> = (0..self.n_groups).collect();
         let mut combinations = Vec::new();
-        
+
         // Generate combinations iteratively to avoid dependency on itertools
-        self.generate_combinations_recursive(&groups, self.test_groups, 0, &mut Vec::new(), &mut combinations);
-        
+        self.generate_combinations_recursive(
+            &groups,
+            self.test_groups,
+            0,
+            &mut Vec::new(),
+            &mut combinations,
+        );
+
         combinations
     }
 
@@ -404,7 +419,7 @@ impl CombinatorialPurgedCV {
             result.push(current.clone());
             return;
         }
-        
+
         for i in start..=(groups.len() - k) {
             current.push(groups[i]);
             self.generate_combinations_recursive(groups, k - 1, i + 1, current, result);
@@ -462,7 +477,9 @@ impl CombinatorialPurgedCV {
 
                     for idx in start..end {
                         // Check embargo constraints
-                        if (idx + self.embargo_periods < test_min) || (idx > test_max + self.embargo_periods) {
+                        if (idx + self.embargo_periods < test_min)
+                            || (idx > test_max + self.embargo_periods)
+                        {
                             train_indices.push(idx);
                         }
                     }
@@ -470,13 +487,17 @@ impl CombinatorialPurgedCV {
             }
 
             // Only add split if it meets minimum size requirements
-            if train_indices.len() >= self.base_cv.min_train_size && test_indices.len() >= self.base_cv.min_test_size {
+            if train_indices.len() >= self.base_cv.min_train_size
+                && test_indices.len() >= self.base_cv.min_test_size
+            {
                 splits.push((train_indices, test_indices, combo_id));
             }
         }
 
         if splits.is_empty() {
-            return Err(PyValueError::new_err("No valid combinatorial splits created"));
+            return Err(PyValueError::new_err(
+                "No valid combinatorial splits created",
+            ));
         }
 
         Ok(splits)
@@ -494,10 +515,14 @@ impl CombinatorialPurgedCV {
     ///
     /// # Returns
     /// OverfittingMetrics containing PBO and related statistics
-    pub fn calculate_pbo(&self, performance_scores: &[f64], n_trials: Option<usize>) -> OverfittingMetrics {
+    pub fn calculate_pbo(
+        &self,
+        performance_scores: &[f64],
+        n_trials: Option<usize>,
+    ) -> OverfittingMetrics {
         let n_combinations = performance_scores.len();
         let trials = n_trials.unwrap_or(n_combinations);
-        
+
         if n_combinations == 0 {
             return OverfittingMetrics {
                 pbo: 1.0, // Maximum overfitting probability
@@ -510,7 +535,7 @@ impl CombinatorialPurgedCV {
         // Calculate PBO using López de Prado's approximation
         let k = n_combinations as f64;
         let n = trials as f64;
-        
+
         let pbo = if k > 0.0 {
             1.0 - (1.0 - (-k).exp()).powf(n / k)
         } else {
@@ -529,9 +554,13 @@ impl CombinatorialPurgedCV {
     }
 
     /// Calculate confidence interval for PBO using bootstrap sampling
-    fn calculate_pbo_confidence_interval(&self, scores: &[f64], confidence_level: f64) -> (f64, f64) {
+    fn calculate_pbo_confidence_interval(
+        &self,
+        scores: &[f64],
+        confidence_level: f64,
+    ) -> (f64, f64) {
         use rand::prelude::*;
-        
+
         if scores.len() < 2 {
             return (0.0, 1.0);
         }
@@ -565,7 +594,10 @@ impl CombinatorialPurgedCV {
         let upper_idx = ((1.0 - alpha / 2.0) * n_bootstrap as f64) as usize;
 
         let lower = bootstrap_pbos.get(lower_idx).copied().unwrap_or(0.0);
-        let upper = bootstrap_pbos.get(upper_idx.min(bootstrap_pbos.len() - 1)).copied().unwrap_or(1.0);
+        let upper = bootstrap_pbos
+            .get(upper_idx.min(bootstrap_pbos.len() - 1))
+            .copied()
+            .unwrap_or(1.0);
 
         (lower, upper)
     }
@@ -574,7 +606,9 @@ impl CombinatorialPurgedCV {
     pub fn validate_splits(&self, splits: &[(Vec<usize>, Vec<usize>, usize)]) -> bool {
         for (train_indices, test_indices, _) in splits {
             // Check minimum sizes
-            if train_indices.len() < self.base_cv.min_train_size || test_indices.len() < self.base_cv.min_test_size {
+            if train_indices.len() < self.base_cv.min_train_size
+                || test_indices.len() < self.base_cv.min_test_size
+            {
                 return false;
             }
 
@@ -586,10 +620,13 @@ impl CombinatorialPurgedCV {
             }
 
             // Check embargo constraints
-            if let (Some(&test_min), Some(&test_max)) = (test_indices.iter().min(), test_indices.iter().max()) {
+            if let (Some(&test_min), Some(&test_max)) =
+                (test_indices.iter().min(), test_indices.iter().max())
+            {
                 for &train_idx in train_indices {
-                    if train_idx >= test_min.saturating_sub(self.embargo_periods) &&
-                       train_idx <= test_max + self.embargo_periods {
+                    if train_idx >= test_min.saturating_sub(self.embargo_periods)
+                        && train_idx <= test_max + self.embargo_periods
+                    {
                         // This training index is too close to test set
                         if train_idx >= test_min && train_idx <= test_max {
                             return false; // Direct overlap
@@ -610,7 +647,8 @@ impl CrossValidator for CombinatorialPurgedCV {
         embargo_pct: f32,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
         // Delegate to base validator for backward compatibility
-        self.base_cv.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
+        self.base_cv
+            .create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
     fn create_pattern_aware_cv_splits(
@@ -620,7 +658,8 @@ impl CrossValidator for CombinatorialPurgedCV {
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
         // Delegate to base validator for backward compatibility
-        self.base_cv.create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
+        self.base_cv
+            .create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
     }
 
     fn validate_cv_splits(
@@ -629,7 +668,8 @@ impl CrossValidator for CombinatorialPurgedCV {
         min_train_size: usize,
         min_test_size: usize,
     ) -> bool {
-        self.base_cv.validate_cv_splits(splits, min_train_size, min_test_size)
+        self.base_cv
+            .validate_cv_splits(splits, min_train_size, min_test_size)
     }
 }
 

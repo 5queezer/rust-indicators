@@ -4,9 +4,9 @@
 //! model implementations, following the patterns established in the rust_indicators
 //! codebase with proper safety using extract_safe! macro and comprehensive error handling.
 //!
-//! ## Phase 4 Integration
+//! ## Advanced Cross-Validation Integration
 //!
-//! Phase 4 introduces advanced overfitting detection capabilities through:
+//! Advanced Cross-Validation introduces advanced overfitting detection capabilities through:
 //! - [`CombinatorialPurgedCV`]: Enhanced cross-validation with C(N,k) combinations
 //! - [`OverfittingDetection`]: Statistical overfitting analysis with PBO calculation
 //! - Convenience functions for easy integration with existing models
@@ -14,69 +14,59 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use rust_indicators::ml::components::{create_phase4_validator, Phase4Config};
+//! use rust_indicators::ml::components::{create_advanced_cross_validation_validator, AdvancedCrossValidationConfig};
 //!
-//! // Create Phase 4 validator with default settings
-//! let validator = create_phase4_validator(Phase4Config::default())?;
+//! // Create Advanced Cross-Validation validator with default settings
+//! let validator = create_advanced_cross_validation_validator(AdvancedCrossValidationConfig::default())?;
 //!
 //! // Or customize the configuration
-//! let config = Phase4Config::new()
+//! let config = AdvancedCrossValidationConfig::new()
 //!     .embargo_pct(0.02)
 //!     .n_groups(10)
 //!     .test_groups(2)
 //!     .significance_level(0.05);
-//! let validator = create_phase4_validator(config)?;
+//! let validator = create_advanced_cross_validation_validator(config)?;
 //! ```
 
-use pyo3::prelude::*;
 use crate::ml::traits::CrossValidator;
+use pyo3::prelude::*;
 
+pub mod advanced_cross_validation_integration;
 pub mod cross_validation;
-pub mod sample_weighting;
-pub mod label_generation;
-pub mod prediction;
-pub mod overfitting_detection;
-pub mod phase4_integration;
-pub mod validation_utils;
 pub mod error_handling;
+pub mod label_generation;
 pub mod memory_optimization;
+pub mod overfitting_detection;
+pub mod prediction;
+pub mod sample_weighting;
+pub mod validation_utils;
 
 pub use cross_validation::{
-    PurgedCrossValidator,
-    PatternAwareCrossValidator,
-    CombinatorialPurgedCV,
-    CVMetrics,
-    OverfittingMetrics,
-    CombinatorialSplitsOutput,
-    CVSplitsOutput
-};
-pub use sample_weighting::{VolatilityWeighting, PatternWeighting, SampleWeightCalculator};
-pub use label_generation::{TradingSide, TripleBarrierLabeler, PatternLabeler, ComponentLabelGenerator};
-pub use prediction::{ConfidencePredictor, BatchPredictor, PredictionEngine, MetaLabeler};
-pub use overfitting_detection::{
-    OverfittingDetection,
-    PBOResult,
-    OverfittingReport,
-    PerformanceStats,
-    DegradationAnalysis,
-    DegradationSeverity
-};
-pub use validation_utils::{
-    ValidationUtils, ModelEvaluators, TrainingWorkflows,
+    CVMetrics, CVSplitsOutput, CombinatorialPurgedCV, CombinatorialSplitsOutput,
+    OverfittingMetrics, PatternAwareCrossValidator, PurgedCrossValidator,
 };
 pub use error_handling::{
-    MLError, MLResult, TrainingResults, PredictionResult,
-    ErrorHandler, PerformanceTracker, ResultBuilder,
+    ErrorHandler, MLError, MLResult, PerformanceTracker, PredictionResult, ResultBuilder,
+    TrainingResults,
+};
+pub use label_generation::{
+    ComponentLabelGenerator, PatternLabeler, TradingSide, TripleBarrierLabeler,
 };
 pub use memory_optimization::{
-    MemoryPool, PooledObject, ComputationCache, ArrayOperations,
-    FeatureProcessor, CVMemoryManager, MemoryOptimizer, MemoryStats,
-    global_memory_optimizer,
+    global_memory_optimizer, ArrayOperations, CVMemoryManager, ComputationCache, FeatureProcessor,
+    MemoryOptimizer, MemoryPool, MemoryStats, PooledObject,
 };
+pub use overfitting_detection::{
+    DegradationAnalysis, DegradationSeverity, OverfittingDetection, OverfittingReport, PBOResult,
+    PerformanceStats,
+};
+pub use prediction::{BatchPredictor, ConfidencePredictor, MetaLabeler, PredictionEngine};
+pub use sample_weighting::{PatternWeighting, SampleWeightCalculator, VolatilityWeighting};
+pub use validation_utils::{ModelEvaluators, TrainingWorkflows, ValidationUtils};
 
-/// Configuration builder for Phase 4 overfitting detection
+/// Configuration builder for Advanced Cross-Validation overfitting detection
 #[derive(Debug, Clone)]
-pub struct Phase4Config {
+pub struct AdvancedCrossValidationConfig {
     pub embargo_pct: f32,
     pub n_groups: usize,
     pub test_groups: usize,
@@ -86,10 +76,14 @@ pub struct Phase4Config {
     pub n_bootstrap: usize,
 }
 
-/// Type alias for the return type of setup_phase4_for_model
-pub type Phase4SetupOutput = (CombinatorialPurgedCV, OverfittingDetection, CombinatorialSplitsOutput);
+/// Type alias for the return type of setup_advanced_cross_validation_for_model
+pub type AdvancedCrossValidationSetupOutput = (
+    CombinatorialPurgedCV,
+    OverfittingDetection,
+    CombinatorialSplitsOutput,
+);
 
-impl Default for Phase4Config {
+impl Default for AdvancedCrossValidationConfig {
     fn default() -> Self {
         Self {
             embargo_pct: 0.02,
@@ -103,8 +97,8 @@ impl Default for Phase4Config {
     }
 }
 
-impl Phase4Config {
-    /// Create a new Phase 4 configuration with default values
+impl AdvancedCrossValidationConfig {
+    /// Create a new Advanced Cross-Validation configuration with default values
     pub fn new() -> Self {
         Self::default()
     }
@@ -152,15 +146,15 @@ impl Phase4Config {
     }
 }
 
-/// Phase 4 validator combining CombinatorialPurgedCV and OverfittingDetection
-pub struct Phase4Validator {
+/// Advanced Cross-Validation validator combining CombinatorialPurgedCV and OverfittingDetection
+pub struct AdvancedCrossValidationValidator {
     pub combinatorial_cv: CombinatorialPurgedCV,
     pub overfitting_detector: OverfittingDetection,
 }
 
-impl Phase4Validator {
-    /// Create a new Phase 4 validator with the given configuration
-    pub fn new(config: Phase4Config) -> Self {
+impl AdvancedCrossValidationValidator {
+    /// Create a new Advanced Cross-Validation validator with the given configuration
+    pub fn new(config: AdvancedCrossValidationConfig) -> Self {
         Self {
             combinatorial_cv: CombinatorialPurgedCV::new(
                 config.embargo_pct,
@@ -183,7 +177,8 @@ impl Phase4Validator {
 
     /// Calculate PBO (Probability of Backtest Overfitting) for performance data
     pub fn calculate_pbo(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<PBOResult> {
-        self.overfitting_detector.calculate_pbo(in_sample, out_sample)
+        self.overfitting_detector
+            .calculate_pbo(in_sample, out_sample)
     }
 
     /// Get the number of combinations that will be generated
@@ -191,8 +186,10 @@ impl Phase4Validator {
         // Calculate C(n_groups, test_groups) combinations
         let n = self.combinatorial_cv.n_groups;
         let k = self.combinatorial_cv.test_groups;
-        if k > n { return 0; }
-        
+        if k > n {
+            return 0;
+        }
+
         let mut result = 1;
         for i in 0..k {
             result = result * (n - i) / (i + 1);
@@ -202,18 +199,25 @@ impl Phase4Validator {
 
     /// Check if the configuration is valid for the given sample size
     pub fn validate_config(&self, n_samples: usize) -> bool {
-        n_samples >= self.combinatorial_cv.base_cv.min_train_size + self.combinatorial_cv.base_cv.min_test_size
+        n_samples
+            >= self.combinatorial_cv.base_cv.min_train_size
+                + self.combinatorial_cv.base_cv.min_test_size
     }
 }
 
-/// Convenience function to create a Phase 4 validator with default configuration
-pub fn create_phase4_validator(config: Phase4Config) -> PyResult<Phase4Validator> {
-    Ok(Phase4Validator::new(config))
+/// Convenience function to create a Advanced Cross-Validation validator with default configuration
+pub fn create_advanced_cross_validation_validator(
+    config: AdvancedCrossValidationConfig,
+) -> PyResult<AdvancedCrossValidationValidator> {
+    Ok(AdvancedCrossValidationValidator::new(config))
 }
 
-/// Convenience function to create a Phase 4 validator with default settings
-pub fn create_default_phase4_validator() -> PyResult<Phase4Validator> {
-    Ok(Phase4Validator::new(Phase4Config::default()))
+/// Convenience function to create a Advanced Cross-Validation validator with default settings
+pub fn create_default_advanced_cross_validation_validator(
+) -> PyResult<AdvancedCrossValidationValidator> {
+    Ok(AdvancedCrossValidationValidator::new(
+        AdvancedCrossValidationConfig::default(),
+    ))
 }
 
 /// Migration helper: Convert PurgedCrossValidator to CombinatorialPurgedCV
@@ -231,13 +235,13 @@ pub fn migrate_to_combinatorial_cv(
     )
 }
 
-/// Helper function to create a complete Phase 4 setup for existing models
-pub fn setup_phase4_for_model(
+/// Helper function to create a complete Advanced Cross-Validation setup for existing models
+pub fn setup_advanced_cross_validation_for_model(
     n_samples: usize,
-    config: Option<Phase4Config>,
-) -> PyResult<Phase4SetupOutput> {
+    config: Option<AdvancedCrossValidationConfig>,
+) -> PyResult<AdvancedCrossValidationSetupOutput> {
     let config = config.unwrap_or_default();
-    
+
     let combinatorial_cv = CombinatorialPurgedCV::new(
         config.embargo_pct,
         config.n_groups,
@@ -245,14 +249,12 @@ pub fn setup_phase4_for_model(
         config.min_train_size,
         config.min_test_size,
     );
-    
-    let overfitting_detector = OverfittingDetection::new(
-        config.significance_level,
-        config.n_bootstrap,
-    );
-    
+
+    let overfitting_detector =
+        OverfittingDetection::new(config.significance_level, config.n_bootstrap);
+
     let splits = combinatorial_cv.create_combinatorial_splits(n_samples)?;
-    
+
     Ok((combinatorial_cv, overfitting_detector, splits))
 }
 
@@ -266,19 +268,20 @@ pub fn create_legacy_cv_splits(
     purged_cv.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
 }
 
-/// Performance comparison helper: Compare Phase 3 vs Phase 4 validation
+/// Performance comparison helper: Compare Phase 3 vs Advanced Cross-Validation validation
 pub struct ValidationComparison {
-    pub phase3_splits: Vec<(Vec<usize>, Vec<usize>)>,
-    pub phase4_splits: Vec<(Vec<usize>, Vec<usize>, usize)>,
-    pub phase3_n_splits: usize,
-    pub phase4_n_combinations: usize,
+    pub scientific_labeling_methods_splits: Vec<(Vec<usize>, Vec<usize>)>,
+    pub advanced_cross_validation_splits: Vec<(Vec<usize>, Vec<usize>, usize)>,
+    pub scientific_labeling_methods_n_splits: usize,
+    pub advanced_cross_validation_n_combinations: usize,
 }
 
 impl ValidationComparison {
-    pub fn new(n_samples: usize, config: Phase4Config) -> PyResult<Self> {
+    pub fn new(n_samples: usize, config: AdvancedCrossValidationConfig) -> PyResult<Self> {
         let purged_cv = PurgedCrossValidator::default();
-        let phase3_splits = purged_cv.create_purged_cv_splits(n_samples, 5, config.embargo_pct)?;
-        
+        let scientific_labeling_methods_splits =
+            purged_cv.create_purged_cv_splits(n_samples, 5, config.embargo_pct)?;
+
         let combinatorial_cv = CombinatorialPurgedCV::new(
             config.embargo_pct,
             config.n_groups,
@@ -286,22 +289,23 @@ impl ValidationComparison {
             config.min_train_size,
             config.min_test_size,
         );
-        let phase4_splits = combinatorial_cv.create_combinatorial_splits(n_samples)?;
-        
+        let advanced_cross_validation_splits =
+            combinatorial_cv.create_combinatorial_splits(n_samples)?;
+
         Ok(Self {
-            phase3_n_splits: phase3_splits.len(),
-            phase4_n_combinations: phase4_splits.len(),
-            phase3_splits,
-            phase4_splits,
+            scientific_labeling_methods_n_splits: scientific_labeling_methods_splits.len(),
+            advanced_cross_validation_n_combinations: advanced_cross_validation_splits.len(),
+            scientific_labeling_methods_splits,
+            advanced_cross_validation_splits,
         })
     }
 
     pub fn get_validation_summary(&self) -> String {
         format!(
-            "Phase 3: {} splits | Phase 4: {} combinations ({}x more validation)",
-            self.phase3_n_splits,
-            self.phase4_n_combinations,
-            self.phase4_n_combinations as f32 / self.phase3_n_splits as f32
+            "Scientific Labeling Methods: {} splits | Advanced Cross-Validation: {} combinations ({}x more validation)",
+            self.scientific_labeling_methods_n_splits,
+            self.advanced_cross_validation_n_combinations,
+            self.advanced_cross_validation_n_combinations as f32 / self.scientific_labeling_methods_n_splits as f32
         )
     }
 }

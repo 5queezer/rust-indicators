@@ -1,6 +1,6 @@
+use crate::indicators::api::{BollingerBandsOutput, HilbertTransformOutput};
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
-use crate::indicators::api::{BollingerBandsOutput, HilbertTransformOutput};
 use std::f64::consts::PI;
 
 pub fn rsi_cpu<'py>(
@@ -442,7 +442,7 @@ pub fn hilbert_transform_cpu<'py>(
     let data_array = data.as_array();
     let data_slice = data_array.as_slice().ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err(
-            "Failed to extract slice from data: array is not contiguous"
+            "Failed to extract slice from data: array is not contiguous",
         )
     })?;
 
@@ -450,6 +450,8 @@ pub fn hilbert_transform_cpu<'py>(
 
     Ok(HilbertTransformOutput {
         real: PyArray1::from_vec(py, real_component).to_owned().into(),
-        imag: PyArray1::from_vec(py, imaginary_component).to_owned().into(),
+        imag: PyArray1::from_vec(py, imaginary_component)
+            .to_owned()
+            .into(),
     })
 }

@@ -152,20 +152,17 @@
 //! - `trading_classifier_example.py`: Trading classification examples
 //! - `unified_classifier_example.py`: Unified classifier usage
 
-pub mod traits;
 pub mod components;
 pub mod models;
+pub mod traits;
 
-pub use traits::{MLBackend, LabelGenerator, CrossValidator, Predictor, UnifiedMLBackend};
 pub use components::{
-    PurgedCrossValidator, PatternAwareCrossValidator,
-    VolatilityWeighting, PatternWeighting, SampleWeightCalculator,
-    TripleBarrierLabeler, PatternLabeler, ComponentLabelGenerator,
-    ConfidencePredictor, BatchPredictor, PredictionEngine,
+    BatchPredictor, ComponentLabelGenerator, ConfidencePredictor, PatternAwareCrossValidator,
+    PatternLabeler, PatternWeighting, PredictionEngine, PurgedCrossValidator,
+    SampleWeightCalculator, TripleBarrierLabeler, VolatilityWeighting,
 };
-pub use models::{
-    PatternClassifier, TradingClassifier, UnifiedClassifier,
-};
+pub use models::{PatternClassifier, TradingClassifier, UnifiedClassifier};
+pub use traits::{CrossValidator, LabelGenerator, MLBackend, Predictor, UnifiedMLBackend};
 
 // Re-export ClassifierMode from unified_classifier for Python bindings
 pub use models::unified_classifier::ClassifierMode;

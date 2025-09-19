@@ -313,18 +313,20 @@
 //! - Safe concurrent predictions
 //! - No global mutable state
 
-use pyo3::prelude::*;
+use numpy::{ndarray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ndarray};
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 use crate::extract_safe;
-use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
-    TripleBarrierLabeler, VolatilityWeighting, PurgedCrossValidator, PredictionEngine,
-    SampleWeightCalculator, PBOResult,
-    phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
+    advanced_cross_validation_integration::{
+        Phase4Capable, Phase4Config, Phase4Results, Phase4Workflow,
+    },
+    PBOResult, PredictionEngine, PurgedCrossValidator, SampleWeightCalculator,
+    TripleBarrierLabeler, VolatilityWeighting,
 };
+use crate::ml::traits::{CrossValidator, LabelGenerator, MLBackend, Predictor};
 
 /// Scientific trading classifier with purged cross-validation
 ///
@@ -339,24 +341,24 @@ pub struct TradingClassifier {
     cross_validator: PurgedCrossValidator,
     prediction_engine: PredictionEngine,
     sample_weight_calculator: SampleWeightCalculator,
-    
-    // Phase 4 integration
-    phase4_workflow: Option<Phase4Workflow>,
-    
+
+    // Advanced Cross-Validation integration
+    advanced_cross_validation_workflow: Option<Phase4Workflow>,
+
     // Training parameters
     embargo_pct: f32,
-    
+
     // Model state
     feature_importance: Vec<f32>,
     sample_weights: Vec<f32>,
     model_weights: Vec<f32>,
     trained: bool,
     n_features: usize,
-    
+
     // Cross-validation splits
     cv_splits: Vec<(Vec<usize>, Vec<usize>)>,
-    
-    // Phase 4 validation results
+
+    // Advanced Cross-Validation validation results
     pbo_result: Option<PBOResult>,
 }
 
@@ -371,7 +373,7 @@ impl TradingClassifier {
             cross_validator: PurgedCrossValidator::default(),
             prediction_engine: PredictionEngine::default(),
             sample_weight_calculator: SampleWeightCalculator::default(),
-            phase4_workflow: None,
+            advanced_cross_validation_workflow: None,
             embargo_pct: 0.01,
             feature_importance: vec![0.0; n_features],
             sample_weights: Vec::new(),
@@ -396,9 +398,10 @@ impl TradingClassifier {
         let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, n_features)
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features, n_features
+            )));
         }
 
         if n_samples != y_array.len() {
@@ -411,16 +414,17 @@ impl TradingClassifier {
         }
 
         // Create purged cross-validation splits
-        self.cv_splits = self.cross_validator.create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
+        self.cv_splits =
+            self.cross_validator
+                .create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
 
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; n_features];
 
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
-            let (fold_score, fold_feature_importance) = self.train_fold(
-                &x_array, &y_array, train_idx, test_idx, learning_rate
-            )?;
+            let (fold_score, fold_feature_importance) =
+                self.train_fold(&x_array, &y_array, train_idx, test_idx, learning_rate)?;
 
             cv_scores.push(fold_score);
 
@@ -440,9 +444,11 @@ impl TradingClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
@@ -453,21 +459,31 @@ impl TradingClassifier {
     }
 
     /// Calculate volatility-based sample weights
-    fn calculate_sample_weights(&mut self, py: Python, returns: PyReadonlyArray1<f32>) -> PyResult<()> {
+    fn calculate_sample_weights(
+        &mut self,
+        py: Python,
+        returns: PyReadonlyArray1<f32>,
+    ) -> PyResult<()> {
         let weights_array = self.volatility_weighting.calculate_weights(py, returns)?;
-        
+
         // Extract weights to internal storage
         let weights_bound = weights_array.bind(py);
         let weights_readonly = weights_bound.readonly();
         let weights_array_view = weights_readonly.as_array();
         self.sample_weights = extract_safe!(weights_array_view, "sample_weights").to_vec();
-        
+
         Ok(())
     }
 
     /// Create purged cross-validation splits (stores internally)
-    fn create_purged_cv_splits_internal(&mut self, n_samples: usize, n_splits: usize) -> PyResult<()> {
-        self.cv_splits = self.cross_validator.create_purged_cv_splits(n_samples, n_splits, self.embargo_pct)?;
+    fn create_purged_cv_splits_internal(
+        &mut self,
+        n_samples: usize,
+        n_splits: usize,
+    ) -> PyResult<()> {
+        self.cv_splits =
+            self.cross_validator
+                .create_purged_cv_splits(n_samples, n_splits, self.embargo_pct)?;
         Ok(())
     }
 
@@ -513,12 +529,22 @@ impl TradingClassifier {
     ) -> PyResult<Py<PyArray1<i32>>> {
         // Delegate to trait implementation
         LabelGenerator::create_triple_barrier_labels(
-            self, py, prices, volatility, profit_mult, stop_mult, max_hold
+            self,
+            py,
+            prices,
+            volatility,
+            profit_mult,
+            stop_mult,
+            max_hold,
         )
     }
 
     /// Make prediction with confidence score
-    fn predict_with_confidence(&self, _py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
+    fn predict_with_confidence(
+        &self,
+        _py: Python,
+        features: PyReadonlyArray1<f32>,
+    ) -> PyResult<(i32, f32)> {
         if !self.trained {
             return Err(PyValueError::new_err("Model not trained"));
         }
@@ -527,17 +553,19 @@ impl TradingClassifier {
         let feats = extract_safe!(features_array, "features");
 
         if feats.len() != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, feats.len())
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features,
+                feats.len()
+            )));
         }
 
         self.predict_sample(feats)
     }
 
-    /// Enable Phase 4 overfitting detection with CombinatorialPurgedCV
+    /// Enable Advanced Cross-Validation overfitting detection with CombinatorialPurgedCV
     #[pyo3(signature = (embargo_pct=0.02, n_groups=8, test_groups=2, min_train_size=100, min_test_size=20))]
-    fn enable_phase4_validation(
+    fn enable_advanced_cross_validation_validation(
         &mut self,
         embargo_pct: f32,
         n_groups: usize,
@@ -552,13 +580,13 @@ impl TradingClassifier {
             .min_train_size(min_train_size)
             .min_test_size(min_test_size)
             .build();
-        
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
-        
+
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
+
         Ok(())
     }
 
-    /// Train with Phase 4 enhanced validation and overfitting detection
+    /// Train with Advanced Cross-Validation enhanced validation and overfitting detection
     #[pyo3(signature = (x, y, learning_rate, use_combinatorial_cv=true))]
     fn train_with_overfitting_detection(
         &mut self,
@@ -572,9 +600,10 @@ impl TradingClassifier {
         let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, n_features)
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features, n_features
+            )));
         }
 
         if n_samples != y_array.len() {
@@ -590,17 +619,26 @@ impl TradingClassifier {
         let mut feature_scores = vec![0.0; n_features];
 
         // Choose validation method
-        if use_combinatorial_cv && self.phase4_workflow.is_some() {
+        if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
             // Use CombinatorialPurgedCV for enhanced validation
-            let workflow = self.phase4_workflow.as_ref().unwrap();
-            let combinatorial_splits = workflow.combinatorial_cv.create_combinatorial_splits(n_samples)?;
-            
-            println!("Using CombinatorialPurgedCV with {} splits for overfitting detection", combinatorial_splits.len());
-            
+            let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+            let combinatorial_splits = workflow
+                .combinatorial_cv
+                .create_combinatorial_splits(n_samples)?;
+
+            println!(
+                "Using CombinatorialPurgedCV with {} splits for overfitting detection",
+                combinatorial_splits.len()
+            );
+
             // Evaluate on combinatorial splits
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
                 let (fold_score, fold_feature_importance) = self.train_fold_with_indices(
-                    &x_array, &y_array, train_idx, test_idx, learning_rate
+                    &x_array,
+                    &y_array,
+                    train_idx,
+                    test_idx,
+                    learning_rate,
                 )?;
 
                 cv_scores.push(fold_score);
@@ -611,21 +649,29 @@ impl TradingClassifier {
             }
 
             // Calculate PBO if overfitting detector is available
-            if let Some(workflow) = &self.phase4_workflow {
+            if let Some(workflow) = &self.advanced_cross_validation_workflow {
                 let performance_scores: Vec<f64> = cv_scores.iter().map(|&x| x as f64).collect();
-                
+
                 // Simulate in-sample vs out-of-sample (in practice, this would be actual IS/OOS data)
                 let in_sample: Vec<f64> = performance_scores.iter().map(|x| x + 0.03).collect();
                 let out_sample: Vec<f64> = performance_scores;
-                
-                match workflow.overfitting_detector.calculate_pbo(&in_sample, &out_sample) {
+
+                match workflow
+                    .overfitting_detector
+                    .calculate_pbo(&in_sample, &out_sample)
+                {
                     Ok(pbo_result) => {
                         self.pbo_result = Some(pbo_result);
-                        println!("Overfitting Analysis: PBO = {:.3} ({})",
+                        println!(
+                            "Overfitting Analysis: PBO = {:.3} ({})",
                             self.pbo_result.as_ref().unwrap().pbo_value,
-                            if self.pbo_result.as_ref().unwrap().is_overfit { "⚠️ Overfit Risk" } else { "✅ Good Generalization" }
+                            if self.pbo_result.as_ref().unwrap().is_overfit {
+                                "⚠️ Overfit Risk"
+                            } else {
+                                "✅ Good Generalization"
+                            }
                         );
-                    },
+                    }
                     Err(e) => println!("PBO calculation failed: {}", e),
                 }
             }
@@ -637,12 +683,13 @@ impl TradingClassifier {
             }
         } else {
             // Use traditional purged CV
-            self.cv_splits = self.cross_validator.create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
+            self.cv_splits =
+                self.cross_validator
+                    .create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
 
             for (train_idx, test_idx) in &self.cv_splits {
-                let (fold_score, fold_feature_importance) = self.train_fold(
-                    &x_array, &y_array, train_idx, test_idx, learning_rate
-                )?;
+                let (fold_score, fold_feature_importance) =
+                    self.train_fold(&x_array, &y_array, train_idx, test_idx, learning_rate)?;
 
                 cv_scores.push(fold_score);
 
@@ -663,19 +710,27 @@ impl TradingClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
         results.insert("cv_std".to_string(), variance.sqrt());
         results.insert("n_folds".to_string(), cv_scores.len() as f32);
-        
+
         if let Some(pbo_result) = &self.pbo_result {
             results.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            results.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            results.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
+            results.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            results.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
         }
 
         Ok(results)
@@ -686,21 +741,36 @@ impl TradingClassifier {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
-            
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
+
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
 
-    /// Check if Phase 4 validation is enabled
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+    /// Check if Advanced Cross-Validation validation is enabled
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
 
     /// Get overfitting risk assessment
@@ -713,7 +783,7 @@ impl TradingClassifier {
                 _ => "🟢 LOW: Good generalization expected".to_string(),
             }
         } else {
-            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+            "❓ UNKNOWN: Enable Advanced Cross-Validation validation for assessment".to_string()
         }
     }
 }
@@ -746,7 +816,11 @@ impl TradingClassifier {
             }
         }
 
-        let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
+        let accuracy = if total > 0 {
+            correct as f32 / total as f32
+        } else {
+            0.0
+        };
         Ok((accuracy, feature_correlations))
     }
 
@@ -769,7 +843,8 @@ impl TradingClassifier {
             return Err(PyValueError::new_err("Feature dimension mismatch"));
         }
 
-        let weighted_sum = features.iter()
+        let weighted_sum = features
+            .iter()
             .zip(&self.model_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
@@ -806,7 +881,8 @@ impl TradingClassifier {
 
             for i in 0..n_samples {
                 let features: Vec<f32> = x.row(i).to_vec();
-                let prediction = features.iter()
+                let prediction = features
+                    .iter()
                     .zip(&weights)
                     .map(|(f, w)| f * w)
                     .sum::<f32>()
@@ -861,9 +937,11 @@ impl MLBackend for TradingClassifier {
         let feats = extract_safe!(features_array, "features");
 
         if feats.len() != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, feats.len())
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features,
+                feats.len()
+            )));
         }
 
         self.predict_sample(feats)
@@ -883,7 +961,7 @@ impl MLBackend for TradingClassifier {
         self.sample_weights.clear();
         self.model_weights = vec![0.0; self.n_features];
         self.cv_splits.clear();
-        // Reset Phase 4 components
+        // Reset Advanced Cross-Validation components
         self.pbo_result = None;
         // Keep combinatorial_cv and overfitting_detector as they are configuration
     }
@@ -900,7 +978,12 @@ impl LabelGenerator for TradingClassifier {
         max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
         self.triple_barrier_labeler.create_triple_barrier_labels(
-            py, prices, volatility, profit_mult, stop_mult, max_hold
+            py,
+            prices,
+            volatility,
+            profit_mult,
+            stop_mult,
+            max_hold,
         )
     }
 
@@ -910,7 +993,9 @@ impl LabelGenerator for TradingClassifier {
         _ohlc_data: crate::ml::traits::OHLCData<'py>,
         _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("TradingClassifier uses triple barrier labels"))
+        Err(PyValueError::new_err(
+            "TradingClassifier uses triple barrier labels",
+        ))
     }
 
     fn calculate_sample_weights<'py>(
@@ -919,7 +1004,8 @@ impl LabelGenerator for TradingClassifier {
         returns: PyReadonlyArray1<'py, f32>,
         _volatility: Option<PyReadonlyArray1<'py, f32>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.sample_weight_calculator.calculate_volatility_weights(py, returns)
+        self.sample_weight_calculator
+            .calculate_volatility_weights(py, returns)
     }
 }
 
@@ -930,7 +1016,8 @@ impl CrossValidator for TradingClassifier {
         n_splits: usize,
         embargo_pct: f32,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.cross_validator.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
+        self.cross_validator
+            .create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
     fn create_pattern_aware_cv_splits(
@@ -939,7 +1026,8 @@ impl CrossValidator for TradingClassifier {
         n_splits: usize,
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.cross_validator.create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
+        self.cross_validator
+            .create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
     }
 
     fn validate_cv_splits(
@@ -948,7 +1036,8 @@ impl CrossValidator for TradingClassifier {
         min_train_size: usize,
         min_test_size: usize,
     ) -> bool {
-        self.cross_validator.validate_cv_splits(splits, min_train_size, min_test_size)
+        self.cross_validator
+            .validate_cv_splits(splits, min_train_size, min_test_size)
     }
 }
 
@@ -982,11 +1071,13 @@ impl Predictor for TradingClassifier {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.prediction_engine.get_prediction_explanation(py, features)
+        self.prediction_engine
+            .get_prediction_explanation(py, features)
     }
 
     fn set_confidence_threshold_unchecked(&mut self, threshold: f32) {
-        self.prediction_engine.set_confidence_threshold_unchecked(threshold);
+        self.prediction_engine
+            .set_confidence_threshold_unchecked(threshold);
     }
 
     fn get_confidence_threshold(&self) -> f32 {
@@ -996,20 +1087,22 @@ impl Predictor for TradingClassifier {
 
 // Implement Phase4Capable trait
 impl Phase4Capable for TradingClassifier {
-    fn enable_phase4(&mut self, config: Phase4Config) -> PyResult<()> {
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
+    fn enable_advanced_cross_validation(&mut self, config: Phase4Config) -> PyResult<()> {
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
         Ok(())
     }
-    
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
-    
-    fn get_phase4_config(&self) -> Option<&Phase4Config> {
-        self.phase4_workflow.as_ref().map(|w| &w.config)
+
+    fn get_advanced_cross_validation_config(&self) -> Option<&Phase4Config> {
+        self.advanced_cross_validation_workflow
+            .as_ref()
+            .map(|w| &w.config)
     }
-    
-    fn train_with_phase4(
+
+    fn train_with_advanced_cross_validation(
         &mut self,
         features: &pyo3::Bound<'_, PyArray2<f32>>,
         labels: &pyo3::Bound<'_, PyArray1<i32>>,
@@ -1020,38 +1113,68 @@ impl Phase4Capable for TradingClassifier {
         let features_array = features.as_array();
         let labels_array = labels.as_array();
         let (n_samples, _) = features_array.dim();
-        
-        if let Some(workflow) = &self.phase4_workflow {
+
+        if let Some(workflow) = &self.advanced_cross_validation_workflow {
             let mut workflow = workflow.clone();
-            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
-                match self.train_fold_with_indices(&features_array, &labels_array, train_idx, test_idx, learning_rate) {
+            let evaluate_fn = |train_idx: &[usize],
+                               test_idx: &[usize],
+                               _combo_id: usize|
+             -> PyResult<(f32, f32)> {
+                match self.train_fold_with_indices(
+                    &features_array,
+                    &labels_array,
+                    train_idx,
+                    test_idx,
+                    learning_rate,
+                ) {
                     Ok((score, _)) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
                 }
             };
-            
-            workflow.execute_validation(n_samples, evaluate_fn)
-                .map_err(|e| PyValueError::new_err(format!("Phase 4 validation failed: {}", e)))
+
+            workflow
+                .execute_validation(n_samples, evaluate_fn)
+                .map_err(|e| {
+                    PyValueError::new_err(format!(
+                        "Advanced Cross-Validation validation failed: {}",
+                        e
+                    ))
+                })
         } else {
-            Err(PyValueError::new_err("Phase 4 not enabled. Call enable_phase4() first."))
+            Err(PyValueError::new_err("Advanced Cross-Validation not enabled. Call enable_advanced_cross_validation() first."))
         }
     }
-    
+
     fn get_overfitting_analysis(&self) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
-    
+
     fn assess_overfitting_risk(&self) -> String {
         if let Some(pbo_result) = &self.pbo_result {
             match pbo_result.pbo_value {
@@ -1061,7 +1184,7 @@ impl Phase4Capable for TradingClassifier {
                 _ => "🟢 LOW: Good generalization expected".to_string(),
             }
         } else {
-            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+            "❓ UNKNOWN: Enable Advanced Cross-Validation validation for assessment".to_string()
         }
     }
 }

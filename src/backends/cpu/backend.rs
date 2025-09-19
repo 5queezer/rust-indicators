@@ -246,9 +246,8 @@ impl IndicatorsBackend for CpuBackend {
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
     ) -> PyResult<crate::indicators::api::HilbertTransformOutput> {
-        let result = crate::backends::cpu::implementations::hilbert_transform_cpu(
-            py, data, lp_period,
-        )?;
+        let result =
+            crate::backends::cpu::implementations::hilbert_transform_cpu(py, data, lp_period)?;
         Ok(result)
     }
 }

@@ -303,10 +303,10 @@
 //! - Safe concurrent weight calculation
 //! - Lock-free algorithms for performance
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use crate::extract_safe;
+use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 /// Volatility-based sample weighting strategy
 ///
@@ -348,7 +348,6 @@ impl Default for VolatilityWeighting {
     fn default() -> Self {
         Self::default()
     }
-
 }
 
 impl VolatilityWeighting {
@@ -376,14 +375,13 @@ impl VolatilityWeighting {
         let mut weights = vec![1.0f32; n];
 
         let window = self.window_size.min(n);
-        
+
         for i in window..n {
             let window_start = i.saturating_sub(window);
             let window_rets = &rets[window_start..i];
             let abs_ret = rets[i].abs();
-            let avg_abs_ret = window_rets.iter()
-                .map(|r| r.abs())
-                .sum::<f32>() / window_rets.len() as f32;
+            let avg_abs_ret =
+                window_rets.iter().map(|r| r.abs()).sum::<f32>() / window_rets.len() as f32;
 
             if avg_abs_ret > 0.0 {
                 weights[i] = (abs_ret / avg_abs_ret).clamp(self.min_weight, self.max_weight);
@@ -434,7 +432,6 @@ impl Default for PatternWeighting {
     fn default() -> Self {
         Self::default()
     }
-
 }
 
 impl PatternWeighting {
@@ -466,7 +463,9 @@ impl PatternWeighting {
         let n = signals.nrows();
 
         if vols.len() != n {
-            return Err(PyValueError::new_err("Pattern signals and volatility arrays must have same length"));
+            return Err(PyValueError::new_err(
+                "Pattern signals and volatility arrays must have same length",
+            ));
         }
 
         let mut weights = vec![1.0f32; n];
@@ -474,7 +473,8 @@ impl PatternWeighting {
         for i in 0..n {
             let pattern_row = signals.row(i);
             let pattern_count = pattern_row.iter().filter(|&&x| x > 0.5).count() as f32;
-            let vol_weight = (vols[i] / self.volatility_target).clamp(self.min_weight, self.max_weight);
+            let vol_weight =
+                (vols[i] / self.volatility_target).clamp(self.min_weight, self.max_weight);
 
             // Weight by pattern rarity and market volatility
             let rarity_weight = if pattern_count > 0.0 {
@@ -482,7 +482,7 @@ impl PatternWeighting {
             } else {
                 1.0
             };
-            
+
             weights[i] = rarity_weight * vol_weight;
         }
 
@@ -516,10 +516,7 @@ impl SampleWeightCalculator {
 
     /// Create default sample weight calculator
     pub fn default() -> Self {
-        Self::new(
-            VolatilityWeighting::default(),
-            PatternWeighting::default(),
-        )
+        Self::new(VolatilityWeighting::default(), PatternWeighting::default())
     }
 
     /// Calculate volatility-based weights
@@ -538,7 +535,8 @@ impl SampleWeightCalculator {
         pattern_signals: PyReadonlyArray2<'py, f32>,
         volatility: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.pattern_weighting.calculate_pattern_weights(py, pattern_signals, volatility)
+        self.pattern_weighting
+            .calculate_pattern_weights(py, pattern_signals, volatility)
     }
 
     /// Calculate combined weights using both volatility and pattern information
@@ -559,7 +557,7 @@ impl SampleWeightCalculator {
         volatility: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
         let vol_weights = self.calculate_volatility_weights(py, returns)?;
-        
+
         if let Some(patterns) = pattern_signals {
             // For now, just return pattern weights when both are available
             // TODO: Implement proper weight combination
@@ -581,7 +579,9 @@ impl crate::ml::traits::LabelGenerator for SampleWeightCalculator {
         _stop_mult: f32,
         _max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("SampleWeightCalculator does not implement label generation"))
+        Err(PyValueError::new_err(
+            "SampleWeightCalculator does not implement label generation",
+        ))
     }
 
     fn create_pattern_labels<'py>(
@@ -590,7 +590,9 @@ impl crate::ml::traits::LabelGenerator for SampleWeightCalculator {
         _ohlc_data: crate::ml::traits::OHLCData<'py>,
         _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("SampleWeightCalculator does not implement label generation"))
+        Err(PyValueError::new_err(
+            "SampleWeightCalculator does not implement label generation",
+        ))
     }
 
     fn calculate_sample_weights<'py>(

@@ -1,5 +1,5 @@
 //! Comprehensive tests for bar structures implementation
-//! 
+//!
 //! Tests cover López de Prado's information-driven bar sampling methods including:
 //! - All 6 bar types (Time, Volume, Dollar, VolumeImbalance, TickImbalance, RunBars)
 //! - BarBuilder streaming functionality
@@ -8,9 +8,9 @@
 //! - VWAP calculation correctness
 //! - Edge cases (empty ticks, zero volumes, etc.)
 
-use rust_indicators::financial::bars::{BarBuilder, BarType, Bar, Tick, ImbalanceTracker};
-use time::{OffsetDateTime, Duration};
 use rstest::{fixture, rstest};
+use rust_indicators::financial::bars::{Bar, BarBuilder, BarType, ImbalanceTracker, Tick};
+use time::{Duration, OffsetDateTime};
 
 #[cfg(test)]
 mod bars_tests {
@@ -25,43 +25,119 @@ mod bars_tests {
     #[fixture]
     fn sample_ticks(base_time: OffsetDateTime) -> Vec<Tick> {
         vec![
-            Tick { timestamp: base_time, price: 100.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 },
-            Tick { timestamp: base_time + Duration::seconds(2), price: 100.5, volume: 200 },
-            Tick { timestamp: base_time + Duration::seconds(3), price: 102.0, volume: 120 },
-            Tick { timestamp: base_time + Duration::seconds(4), price: 101.5, volume: 180 },
-            Tick { timestamp: base_time + Duration::seconds(5), price: 103.0, volume: 160 },
+            Tick {
+                timestamp: base_time,
+                price: 100.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(1),
+                price: 101.0,
+                volume: 150,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(2),
+                price: 100.5,
+                volume: 200,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(3),
+                price: 102.0,
+                volume: 120,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(4),
+                price: 101.5,
+                volume: 180,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(5),
+                price: 103.0,
+                volume: 160,
+            },
         ]
     }
 
     #[fixture]
     fn trending_up_ticks(base_time: OffsetDateTime) -> Vec<Tick> {
         vec![
-            Tick { timestamp: base_time, price: 100.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(3), price: 103.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(4), price: 104.0, volume: 100 },
+            Tick {
+                timestamp: base_time,
+                price: 100.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(1),
+                price: 101.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(2),
+                price: 102.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(3),
+                price: 103.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(4),
+                price: 104.0,
+                volume: 100,
+            },
         ]
     }
 
     #[fixture]
     fn volatile_ticks(base_time: OffsetDateTime) -> Vec<Tick> {
         vec![
-            Tick { timestamp: base_time, price: 100.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(1), price: 105.0, volume: 200 },
-            Tick { timestamp: base_time + Duration::seconds(2), price: 95.0, volume: 300 },
-            Tick { timestamp: base_time + Duration::seconds(3), price: 110.0, volume: 150 },
-            Tick { timestamp: base_time + Duration::seconds(4), price: 90.0, volume: 250 },
+            Tick {
+                timestamp: base_time,
+                price: 100.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(1),
+                price: 105.0,
+                volume: 200,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(2),
+                price: 95.0,
+                volume: 300,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(3),
+                price: 110.0,
+                volume: 150,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(4),
+                price: 90.0,
+                volume: 250,
+            },
         ]
     }
 
     #[fixture]
     fn zero_volume_ticks(base_time: OffsetDateTime) -> Vec<Tick> {
         vec![
-            Tick { timestamp: base_time, price: 100.0, volume: 0 },
-            Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 0 },
-            Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 100 },
+            Tick {
+                timestamp: base_time,
+                price: 100.0,
+                volume: 0,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(1),
+                price: 101.0,
+                volume: 0,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(2),
+                price: 102.0,
+                volume: 100,
+            },
         ]
     }
 
@@ -74,9 +150,21 @@ mod bars_tests {
             frequency: Duration::seconds(2),
         });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 };
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 200 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 150,
+        };
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 102.0,
+            volume: 200,
+        };
 
         // First two ticks should not complete bar
         assert!(builder.process_tick(&tick1).is_none());
@@ -84,14 +172,14 @@ mod bars_tests {
 
         // Third tick should complete bar due to time threshold
         let bar = builder.process_tick(&tick3).unwrap();
-        
+
         assert_eq!(bar.timestamp, base_time);
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 102.0);
         assert_eq!(bar.high, 102.0);
         assert_eq!(bar.low, 100.0);
         assert_eq!(bar.volume, 450); // 100 + 150 + 200
-        
+
         // VWAP calculation: (100*100 + 101*150 + 102*200) / 450
         let expected_vwap = (10000.0 + 15150.0 + 20400.0) / 450.0;
         assert!((bar.vwap - expected_vwap).abs() < 1e-6);
@@ -104,12 +192,20 @@ mod bars_tests {
             frequency: Duration::seconds(1),
         });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 150,
+        };
 
         assert!(builder.process_tick(&tick1).is_none());
         let bar = builder.process_tick(&tick2).unwrap();
-        
+
         assert_eq!(bar.volume, 250);
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 101.0);
@@ -122,9 +218,21 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 300 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 };
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 100 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 150,
+        };
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 102.0,
+            volume: 100,
+        };
 
         // First two ticks: 100 + 150 = 250 < 300
         assert!(builder.process_tick(&tick1).is_none());
@@ -132,7 +240,7 @@ mod bars_tests {
 
         // Third tick: 250 + 100 = 350 >= 300
         let bar = builder.process_tick(&tick3).unwrap();
-        
+
         assert_eq!(bar.volume, 350);
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 102.0);
@@ -145,12 +253,20 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 250 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 150,
+        };
 
         assert!(builder.process_tick(&tick1).is_none());
         let bar = builder.process_tick(&tick2).unwrap();
-        
+
         assert_eq!(bar.volume, 250);
     }
 
@@ -160,11 +276,11 @@ mod bars_tests {
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 150 });
 
         let zero_ticks = zero_volume_ticks(base_time);
-        
+
         // Zero volume ticks should not contribute to volume threshold
         assert!(builder.process_tick(&zero_ticks[0]).is_none());
         assert!(builder.process_tick(&zero_ticks[1]).is_none());
-        
+
         // Only the third tick with volume 100 should contribute
         let bar = builder.process_tick(&zero_ticks[2]).unwrap();
         assert_eq!(bar.volume, 100); // Only non-zero volume counted
@@ -177,9 +293,21 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Dollar { threshold: 25000.0 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 }; // $10,000
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 150.0, volume: 100 }; // $15,000
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 200.0, volume: 50 }; // $10,000
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        }; // $10,000
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 150.0,
+            volume: 100,
+        }; // $15,000
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 200.0,
+            volume: 50,
+        }; // $10,000
 
         // Total: $10,000 + $15,000 = $25,000 < threshold
         assert!(builder.process_tick(&tick1).is_none());
@@ -187,7 +315,7 @@ mod bars_tests {
 
         // Total: $25,000 + $10,000 = $35,000 >= threshold
         let bar = builder.process_tick(&tick3).unwrap();
-        
+
         assert_eq!(bar.volume, 250);
         // VWAP = $35,000 / 250 = $140
         assert!((bar.vwap - 140.0).abs() < 1e-6);
@@ -198,12 +326,20 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Dollar { threshold: 10000.0 });
 
-        let tick1 = Tick { timestamp: base_time, price: 1000.0, volume: 5 }; // $5,000
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 2000.0, volume: 3 }; // $6,000
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 1000.0,
+            volume: 5,
+        }; // $5,000
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 2000.0,
+            volume: 3,
+        }; // $6,000
 
         assert!(builder.process_tick(&tick1).is_none());
         let bar = builder.process_tick(&tick2).unwrap();
-        
+
         assert_eq!(bar.volume, 8);
         // VWAP = $11,000 / 8 = $1,375
         assert!((bar.vwap - 1375.0).abs() < 1e-6);
@@ -217,7 +353,7 @@ mod bars_tests {
         let mut builder = BarBuilder::new(BarType::TickImbalance { threshold: 3 });
 
         let uptrend_ticks = trending_up_ticks(base_time);
-        
+
         // Process ticks with increasing prices (all positive tick signs)
         assert!(builder.process_tick(&uptrend_ticks[0]).is_none()); // tick_imbalance = 0
         assert!(builder.process_tick(&uptrend_ticks[1]).is_none()); // tick_imbalance = +1
@@ -227,7 +363,7 @@ mod bars_tests {
         // Should complete when imbalance exceeds threshold
         let bar = builder.process_tick(&uptrend_ticks[4]); // tick_imbalance = +4 > 3
         assert!(bar.is_some());
-        
+
         let bar = bar.unwrap();
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 104.0);
@@ -239,17 +375,37 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::TickImbalance { threshold: 2 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 100 }; // +1
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 100.5, volume: 100 }; // -1
-        let tick4 = Tick { timestamp: base_time + Duration::seconds(3), price: 102.0, volume: 100 }; // +1
-        let tick5 = Tick { timestamp: base_time + Duration::seconds(4), price: 103.0, volume: 100 }; // +1
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 100,
+        }; // +1
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 100.5,
+            volume: 100,
+        }; // -1
+        let tick4 = Tick {
+            timestamp: base_time + Duration::seconds(3),
+            price: 102.0,
+            volume: 100,
+        }; // +1
+        let tick5 = Tick {
+            timestamp: base_time + Duration::seconds(4),
+            price: 103.0,
+            volume: 100,
+        }; // +1
 
         assert!(builder.process_tick(&tick1).is_none()); // imbalance = 0
         assert!(builder.process_tick(&tick2).is_none()); // imbalance = +1
         assert!(builder.process_tick(&tick3).is_none()); // imbalance = 0 (+1-1)
         assert!(builder.process_tick(&tick4).is_none()); // imbalance = +1
-        
+
         // Should complete when |imbalance| > threshold
         let bar = builder.process_tick(&tick5); // imbalance = +2
         assert!(bar.is_none()); // threshold is 2, so +2 is not > 2
@@ -262,19 +418,35 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::VolumeImbalance { threshold: 200.0 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 150 }; // +150
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 100.5, volume: 100 }; // -100
-        let tick4 = Tick { timestamp: base_time + Duration::seconds(3), price: 102.0, volume: 200 }; // +200
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 150,
+        }; // +150
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 100.5,
+            volume: 100,
+        }; // -100
+        let tick4 = Tick {
+            timestamp: base_time + Duration::seconds(3),
+            price: 102.0,
+            volume: 200,
+        }; // +200
 
         assert!(builder.process_tick(&tick1).is_none()); // volume_imbalance = 0
         assert!(builder.process_tick(&tick2).is_none()); // volume_imbalance = +150
         assert!(builder.process_tick(&tick3).is_none()); // volume_imbalance = +50 (+150-100)
-        
+
         // Should complete when |volume_imbalance| > threshold
         let bar = builder.process_tick(&tick4); // volume_imbalance = +250 > 200
         assert!(bar.is_some());
-        
+
         let bar = bar.unwrap();
         assert_eq!(bar.volume, 550);
     }
@@ -286,11 +458,31 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::RunBars { run_length: 3 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 100 }; // Up
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 100 }; // Up
-        let tick4 = Tick { timestamp: base_time + Duration::seconds(3), price: 103.0, volume: 100 }; // Up (run = 3)
-        let tick5 = Tick { timestamp: base_time + Duration::seconds(4), price: 102.0, volume: 100 }; // Down (direction change)
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 100,
+        }; // Up
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 102.0,
+            volume: 100,
+        }; // Up
+        let tick4 = Tick {
+            timestamp: base_time + Duration::seconds(3),
+            price: 103.0,
+            volume: 100,
+        }; // Up (run = 3)
+        let tick5 = Tick {
+            timestamp: base_time + Duration::seconds(4),
+            price: 102.0,
+            volume: 100,
+        }; // Down (direction change)
 
         // Build up run of 3 up ticks
         assert!(builder.process_tick(&tick1).is_none());
@@ -301,7 +493,7 @@ mod bars_tests {
         // Direction change should complete bar when run length >= threshold
         let bar = builder.process_tick(&tick5);
         assert!(bar.is_some());
-        
+
         let bar = bar.unwrap();
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 102.0); // Close with the direction-changing tick
@@ -314,7 +506,7 @@ mod bars_tests {
         let mut builder = BarBuilder::new(BarType::RunBars { run_length: 5 });
 
         let uptrend_ticks = trending_up_ticks(base_time);
-        
+
         // All ticks are in same direction, no bar should be completed
         for tick in &uptrend_ticks {
             assert!(builder.process_tick(tick).is_none());
@@ -326,15 +518,31 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::RunBars { run_length: 2 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 100 }; // Up
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 100 }; // Up (run = 2)
-        let tick4 = Tick { timestamp: base_time + Duration::seconds(3), price: 101.0, volume: 100 }; // Down (direction change)
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 100,
+        }; // Up
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 102.0,
+            volume: 100,
+        }; // Up (run = 2)
+        let tick4 = Tick {
+            timestamp: base_time + Duration::seconds(3),
+            price: 101.0,
+            volume: 100,
+        }; // Down (direction change)
 
         assert!(builder.process_tick(&tick1).is_none());
         assert!(builder.process_tick(&tick2).is_none());
         assert!(builder.process_tick(&tick3).is_none());
-        
+
         // Direction change with run length >= threshold should complete bar
         let bar = builder.process_tick(&tick4);
         assert!(bar.is_some());
@@ -423,9 +631,21 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 300 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 }; // $10,000
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 200.0, volume: 100 }; // $20,000
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 150.0, volume: 100 }; // $15,000
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        }; // $10,000
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 200.0,
+            volume: 100,
+        }; // $20,000
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 150.0,
+            volume: 100,
+        }; // $15,000
 
         builder.process_tick(&tick1);
         builder.process_tick(&tick2);
@@ -438,10 +658,20 @@ mod bars_tests {
     #[test]
     fn test_vwap_with_zero_volume() {
         let base_time = base_time();
-        let mut builder = BarBuilder::new(BarType::Time { frequency: Duration::seconds(1) });
+        let mut builder = BarBuilder::new(BarType::Time {
+            frequency: Duration::seconds(1),
+        });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 0 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 0 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 0,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 0,
+        };
 
         builder.process_tick(&tick1);
         let bar = builder.process_tick(&tick2).unwrap();
@@ -458,10 +688,26 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 400 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 100 }; // Up tick (buy)
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 100.5, volume: 100 }; // Down tick (sell)
-        let tick4 = Tick { timestamp: base_time + Duration::seconds(3), price: 102.0, volume: 100 }; // Up tick (buy)
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 101.0,
+            volume: 100,
+        }; // Up tick (buy)
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 100.5,
+            volume: 100,
+        }; // Down tick (sell)
+        let tick4 = Tick {
+            timestamp: base_time + Duration::seconds(3),
+            price: 102.0,
+            volume: 100,
+        }; // Up tick (buy)
 
         builder.process_tick(&tick1);
         builder.process_tick(&tick2);
@@ -480,7 +726,7 @@ mod bars_tests {
     #[test]
     fn test_empty_tick_stream() {
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 100 });
-        
+
         // No ticks processed, no bars should be created
         assert!(!builder.has_current_bar());
     }
@@ -490,7 +736,11 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 50 });
 
-        let tick = Tick { timestamp: base_time, price: 100.0, volume: 100 };
+        let tick = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
         let bar = builder.process_tick(&tick).unwrap();
 
         assert_eq!(bar.open, 100.0);
@@ -506,9 +756,21 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 300 });
 
-        let tick1 = Tick { timestamp: base_time, price: 100.0, volume: 100 };
-        let tick2 = Tick { timestamp: base_time + Duration::seconds(1), price: 100.0, volume: 100 };
-        let tick3 = Tick { timestamp: base_time + Duration::seconds(2), price: 100.0, volume: 100 };
+        let tick1 = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
+        let tick2 = Tick {
+            timestamp: base_time + Duration::seconds(1),
+            price: 100.0,
+            volume: 100,
+        };
+        let tick3 = Tick {
+            timestamp: base_time + Duration::seconds(2),
+            price: 100.0,
+            volume: 100,
+        };
 
         builder.process_tick(&tick1);
         builder.process_tick(&tick2);
@@ -526,7 +788,11 @@ mod bars_tests {
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 1000 });
 
-        let tick = Tick { timestamp: base_time, price: 100.0, volume: 100 };
+        let tick = Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        };
         builder.process_tick(&tick);
 
         // Bar shouldn't complete naturally
@@ -549,16 +815,16 @@ mod bars_tests {
     #[case::run_bars(BarType::RunBars { run_length: 3 })]
     fn test_bar_types_basic_properties(#[case] bar_type: BarType, sample_ticks: Vec<Tick>) {
         let mut builder = BarBuilder::new(bar_type.clone());
-        
+
         // Verify builder properties
         assert_eq!(builder.bar_type(), &bar_type);
         assert!(!builder.has_current_bar());
-        
+
         // Process some ticks
         for tick in &sample_ticks[..3] {
             builder.process_tick(tick);
         }
-        
+
         // Should have a bar in progress after processing ticks
         assert!(builder.has_current_bar());
     }
@@ -569,19 +835,19 @@ mod bars_tests {
     #[case::volatile_ticks(volatile_ticks(base_time()))]
     fn test_bar_ohlc_consistency(#[case] ticks: Vec<Tick>) {
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 200 });
-        
+
         let mut bars = Vec::new();
         for tick in ticks {
             if let Some(bar) = builder.process_tick(&tick) {
                 bars.push(bar);
             }
         }
-        
+
         // Force complete any remaining bar
         if let Some(bar) = builder.force_complete_bar() {
             bars.push(bar);
         }
-        
+
         // Verify OHLC consistency for each bar
         for bar in bars {
             assert!(bar.high >= bar.open, "High should be >= open");
@@ -589,9 +855,18 @@ mod bars_tests {
             assert!(bar.low <= bar.open, "Low should be <= open");
             assert!(bar.low <= bar.close, "Low should be <= close");
             assert!(bar.high >= bar.low, "High should be >= low");
-            assert!(bar.volume >= bar.buy_volume, "Total volume should be >= buy volume");
-            assert!(bar.volume >= bar.sell_volume, "Total volume should be >= sell volume");
-            assert!(bar.vwap > 0.0 || bar.volume == 0, "VWAP should be positive unless zero volume");
+            assert!(
+                bar.volume >= bar.buy_volume,
+                "Total volume should be >= buy volume"
+            );
+            assert!(
+                bar.volume >= bar.sell_volume,
+                "Total volume should be >= sell volume"
+            );
+            assert!(
+                bar.vwap > 0.0 || bar.volume == 0,
+                "VWAP should be positive unless zero volume"
+            );
         }
     }
 
@@ -602,13 +877,15 @@ mod bars_tests {
         // Test that information-driven bars sample more frequently during high activity
         let base_time = base_time();
         let volatile_ticks = volatile_ticks(base_time);
-        
+
         let mut volume_builder = BarBuilder::new(BarType::Volume { threshold: 200 });
-        let mut time_builder = BarBuilder::new(BarType::Time { frequency: Duration::seconds(10) });
-        
+        let mut time_builder = BarBuilder::new(BarType::Time {
+            frequency: Duration::seconds(10),
+        });
+
         let mut volume_bars = 0;
         let mut time_bars = 0;
-        
+
         for tick in volatile_ticks {
             if volume_builder.process_tick(&tick).is_some() {
                 volume_bars += 1;
@@ -617,7 +894,7 @@ mod bars_tests {
                 time_bars += 1;
             }
         }
-        
+
         // Volume bars should adapt to activity level
         // This is a basic test - in practice, we'd need more sophisticated validation
         assert!(volume_bars >= 0); // At least some bars should be created
@@ -628,26 +905,26 @@ mod bars_tests {
         // Test that bars preserve microstructural information needed for López de Prado's methods
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::Volume { threshold: 300 });
-        
+
         let ticks = sample_ticks(base_time);
         let mut bars = Vec::new();
-        
+
         for tick in ticks {
             if let Some(bar) = builder.process_tick(&tick) {
                 bars.push(bar);
             }
         }
-        
+
         for bar in bars {
             // Should preserve buy/sell volume information
             assert!(bar.buy_volume + bar.sell_volume <= bar.volume);
-            
+
             // Should have accurate VWAP calculation
             assert!(bar.vwap > 0.0 || bar.volume == 0);
-            
+
             // Should preserve timestamp information
             assert!(bar.timestamp <= OffsetDateTime::now_utc());
-            
+
             // Should maintain OHLC relationships
             assert!(bar.high >= bar.low);
             assert!(bar.high >= bar.open && bar.high >= bar.close);
@@ -660,21 +937,33 @@ mod bars_tests {
         // Test that bars are synchronized with information arrival
         let base_time = base_time();
         let mut builder = BarBuilder::new(BarType::VolumeImbalance { threshold: 100.0 });
-        
+
         // Create ticks with strong imbalance
         let imbalanced_ticks = vec![
-            Tick { timestamp: base_time, price: 100.0, volume: 100 },
-            Tick { timestamp: base_time + Duration::seconds(1), price: 101.0, volume: 200 }, // Strong buy
-            Tick { timestamp: base_time + Duration::seconds(2), price: 102.0, volume: 150 }, // Strong buy
+            Tick {
+                timestamp: base_time,
+                price: 100.0,
+                volume: 100,
+            },
+            Tick {
+                timestamp: base_time + Duration::seconds(1),
+                price: 101.0,
+                volume: 200,
+            }, // Strong buy
+            Tick {
+                timestamp: base_time + Duration::seconds(2),
+                price: 102.0,
+                volume: 150,
+            }, // Strong buy
         ];
-        
+
         let mut bar_count = 0;
         for tick in imbalanced_ticks {
             if builder.process_tick(&tick).is_some() {
                 bar_count += 1;
             }
         }
-        
+
         // Should create bars when imbalance threshold is exceeded
         assert!(bar_count > 0);
     }

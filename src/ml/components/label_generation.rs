@@ -4,12 +4,12 @@
 //! pattern_model_example.rs and classifier_model_example.rs. It implements triple barrier
 //! method and pattern-based labeling using the extract_safe! macro for safety.
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1};
-use rayon::prelude::*;
 use crate::extract_safe;
 use crate::ml::traits::LabelGenerator;
+use numpy::{PyArray1, PyReadonlyArray1};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use rayon::prelude::*;
 
 /// Trading side for side-aware labeling
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -71,6 +71,7 @@ impl TripleBarrierLabeler {
 
 impl TripleBarrierLabeler {
     /// Set trading side for side-aware labeling
+    #[allow(dead_code)]
     fn with_side(mut self, side: TradingSide) -> Self {
         self.trading_side = Some(side);
         self
@@ -87,8 +88,13 @@ impl TripleBarrierLabeler {
         max_hold: usize,
     ) -> BarrierResult {
         let end_idx = (start_idx + max_hold).min(prices.len() - 1);
-        
-        for (i, &price) in prices.iter().enumerate().take(end_idx + 1).skip(start_idx + 1) {
+
+        for (i, &price) in prices
+            .iter()
+            .enumerate()
+            .take(end_idx + 1)
+            .skip(start_idx + 1)
+        {
             // Check barriers in chronological order
             if price >= upper_barrier {
                 return BarrierResult {
@@ -96,7 +102,7 @@ impl TripleBarrierLabeler {
                     touch_time: i - start_idx,
                 };
             }
-            
+
             if price <= lower_barrier {
                 return BarrierResult {
                     barrier_type: BarrierType::Lower,
@@ -104,7 +110,7 @@ impl TripleBarrierLabeler {
                 };
             }
         }
-        
+
         // If we reach max_hold without hitting barriers
         if end_idx == start_idx + max_hold {
             BarrierResult {
@@ -129,31 +135,49 @@ impl TripleBarrierLabeler {
     ) -> i32 {
         match (barrier_result.barrier_type, side) {
             // Long position configurations
-            (BarrierType::Upper, Some(TradingSide::Long)) => 1,  // Profit hit
+            (BarrierType::Upper, Some(TradingSide::Long)) => 1, // Profit hit
             (BarrierType::Lower, Some(TradingSide::Long)) => -1, // Loss hit
             (BarrierType::Vertical, Some(TradingSide::Long)) => {
                 let return_val = (exit_price / entry_price) - 1.0;
-                if return_val > 0.002 { 1 } else if return_val < -0.002 { -1 } else { 0 }
-            },
+                if return_val > 0.002 {
+                    1
+                } else if return_val < -0.002 {
+                    -1
+                } else {
+                    0
+                }
+            }
             (BarrierType::None, Some(TradingSide::Long)) => 0, // NaN equivalent
-            
+
             // Short position configurations
             (BarrierType::Upper, Some(TradingSide::Short)) => -1, // Loss hit (price went up)
             (BarrierType::Lower, Some(TradingSide::Short)) => 1,  // Profit hit (price went down)
             (BarrierType::Vertical, Some(TradingSide::Short)) => {
                 let return_val = (exit_price / entry_price) - 1.0;
                 // For short positions, negative returns are profits
-                if return_val < -0.002 { 1 } else if return_val > 0.002 { -1 } else { 0 }
-            },
+                if return_val < -0.002 {
+                    1
+                } else if return_val > 0.002 {
+                    -1
+                } else {
+                    0
+                }
+            }
             (BarrierType::None, Some(TradingSide::Short)) => 0, // NaN equivalent
-            
+
             // No side specified - traditional labeling
-            (BarrierType::Upper, None) => 2,  // Buy signal
-            (BarrierType::Lower, None) => 0,  // Sell signal
+            (BarrierType::Upper, None) => 2, // Buy signal
+            (BarrierType::Lower, None) => 0, // Sell signal
             (BarrierType::Vertical, None) => {
                 let return_val = (exit_price / entry_price) - 1.0;
-                if return_val > 0.002 { 2 } else if return_val < -0.002 { 0 } else { 1 }
-            },
+                if return_val > 0.002 {
+                    2
+                } else if return_val < -0.002 {
+                    0
+                } else {
+                    1
+                }
+            }
             (BarrierType::None, None) => 1, // Hold
         }
     }
@@ -174,7 +198,9 @@ impl TripleBarrierLabeler {
         let vols_slice = extract_safe!(volatility_array, "volatility");
 
         if prices_slice.len() != vols_slice.len() {
-            return Err(PyValueError::new_err("Price and volatility arrays must have same length"));
+            return Err(PyValueError::new_err(
+                "Price and volatility arrays must have same length",
+            ));
         }
 
         let n = prices_slice.len();
@@ -208,12 +234,7 @@ impl TripleBarrierLabeler {
                 let exit_idx = (i + barrier_result.touch_time).min(n - 1);
                 let exit_price = prices_slice[exit_idx];
 
-                self.generate_side_aware_label(
-                    barrier_result,
-                    entry,
-                    exit_price,
-                    self.trading_side,
-                )
+                self.generate_side_aware_label(barrier_result, entry, exit_price, self.trading_side)
             })
             .collect();
 
@@ -241,7 +262,14 @@ impl LabelGenerator for TripleBarrierLabeler {
         stop_mult: f32,
         max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.generate_labels(py, prices, volatility, Some(profit_mult), Some(stop_mult), Some(max_hold))
+        self.generate_labels(
+            py,
+            prices,
+            volatility,
+            Some(profit_mult),
+            Some(stop_mult),
+            Some(max_hold),
+        )
     }
 
     fn create_pattern_labels<'py>(
@@ -250,7 +278,9 @@ impl LabelGenerator for TripleBarrierLabeler {
         _ohlc_data: crate::ml::traits::OHLCData<'py>,
         _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("TripleBarrierLabeler does not implement pattern labels"))
+        Err(PyValueError::new_err(
+            "TripleBarrierLabeler does not implement pattern labels",
+        ))
     }
 
     fn calculate_sample_weights<'py>(
@@ -259,7 +289,9 @@ impl LabelGenerator for TripleBarrierLabeler {
         _returns: PyReadonlyArray1<'py, f32>,
         _volatility: Option<PyReadonlyArray1<'py, f32>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        Err(PyValueError::new_err("TripleBarrierLabeler does not implement sample weighting"))
+        Err(PyValueError::new_err(
+            "TripleBarrierLabeler does not implement sample weighting",
+        ))
     }
 }
 
@@ -314,7 +346,9 @@ impl PatternLabeler {
 
         let n = opens.len();
         if highs.len() != n || lows.len() != n || closes.len() != n {
-            return Err(PyValueError::new_err("All OHLC arrays must have same length"));
+            return Err(PyValueError::new_err(
+                "All OHLC arrays must have same length",
+            ));
         }
 
         let mut labels = vec![1i32; n];
@@ -345,7 +379,13 @@ impl PatternLabeler {
             if signal == 1 {
                 let final_price = closes[(i + future_periods).min(n - 1)];
                 let final_return = (final_price / entry_price) - 1.0;
-                signal = if final_return > 0.005 { 2 } else if final_return < -0.005 { 0 } else { 1 };
+                signal = if final_return > 0.005 {
+                    2
+                } else if final_return < -0.005 {
+                    0
+                } else {
+                    1
+                };
             }
 
             labels[i] = signal;
@@ -365,7 +405,9 @@ impl LabelGenerator for PatternLabeler {
         _stop_mult: f32,
         _max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        Err(PyValueError::new_err("PatternLabeler does not implement triple barrier labels"))
+        Err(PyValueError::new_err(
+            "PatternLabeler does not implement triple barrier labels",
+        ))
     }
 
     fn create_pattern_labels<'py>(
@@ -383,7 +425,9 @@ impl LabelGenerator for PatternLabeler {
         _returns: PyReadonlyArray1<'py, f32>,
         _volatility: Option<PyReadonlyArray1<'py, f32>>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        Err(PyValueError::new_err("PatternLabeler does not implement sample weighting"))
+        Err(PyValueError::new_err(
+            "PatternLabeler does not implement sample weighting",
+        ))
     }
 }
 
@@ -407,10 +451,7 @@ impl ComponentLabelGenerator {
 
     /// Create default unified label generator
     pub fn default() -> Self {
-        Self::new(
-            TripleBarrierLabeler::default(),
-            PatternLabeler::default(),
-        )
+        Self::new(TripleBarrierLabeler::default(), PatternLabeler::default())
     }
 }
 
@@ -431,7 +472,12 @@ impl LabelGenerator for ComponentLabelGenerator {
         max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
         self.triple_barrier.create_triple_barrier_labels(
-            py, prices, volatility, profit_mult, stop_mult, max_hold
+            py,
+            prices,
+            volatility,
+            profit_mult,
+            stop_mult,
+            max_hold,
         )
     }
 
@@ -441,7 +487,8 @@ impl LabelGenerator for ComponentLabelGenerator {
         ohlc_data: crate::ml::traits::OHLCData<'py>,
         params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
+        self.pattern_labeler
+            .create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(
@@ -477,8 +524,7 @@ mod tests {
 
     #[test]
     fn test_triple_barrier_with_side() {
-        let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20)
-            .with_side(TradingSide::Long);
+        let labeler = TripleBarrierLabeler::new(2.0, 1.5, 20).with_side(TradingSide::Long);
         assert_eq!(labeler.trading_side, Some(TradingSide::Long));
     }
 

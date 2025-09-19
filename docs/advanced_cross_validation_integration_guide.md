@@ -1,8 +1,8 @@
-# Phase 4 Integration Guide
+# Advanced Cross-Validation Integration Guide
 
 ## Overview
 
-Phase 4 introduces advanced overfitting detection capabilities to the rust_indicators ML ecosystem through CombinatorialPurgedCV and statistical overfitting analysis. This guide demonstrates how to integrate Phase 4 components with existing models while maintaining backward compatibility.
+Advanced Cross-Validation introduces advanced overfitting detection capabilities to the rust_indicators ML ecosystem through CombinatorialPurgedCV and statistical overfitting analysis. This guide demonstrates how to integrate Advanced Cross-Validation components with existing models while maintaining backward compatibility.
 
 ## Key Components
 
@@ -27,11 +27,11 @@ use rust_indicators::ml::components::Phase4Config;
 // Create classifier
 let mut classifier = PatternClassifier::new(7)?;
 
-// Enable Phase 4 validation
-classifier.enable_phase4_validation(0.02, 8, 2, 100, 20)?;
+// Enable Advanced Cross-Validation validation
+classifier.enable_advanced_cross_validation_validation(0.02, 8, 2, 100, 20)?;
 
 // Train with overfitting detection
-let results = classifier.train_with_phase4_validation(X, y, 0.01, true)?;
+let results = classifier.train_with_advanced_cross_validation_validation(X, y, 0.01, true)?;
 
 // Check overfitting analysis
 if let Some(analysis) = classifier.get_overfitting_analysis(py)? {
@@ -48,8 +48,8 @@ use rust_indicators::ml::models::TradingClassifier;
 // Create classifier
 let mut classifier = TradingClassifier::new(7)?;
 
-// Enable Phase 4 validation with custom parameters
-classifier.enable_phase4_validation(0.02, 10, 2, 150, 30)?;
+// Enable Advanced Cross-Validation validation with custom parameters
+classifier.enable_advanced_cross_validation_validation(0.02, 10, 2, 150, 30)?;
 
 // Train with enhanced validation
 let results = classifier.train_with_overfitting_detection(X, y, 0.01, true)?;
@@ -67,10 +67,10 @@ use rust_indicators::ml::models::{UnifiedClassifier, ClassifierMode};
 // Create unified classifier
 let mut classifier = UnifiedClassifier::new(10, Some(ClassifierMode::Hybrid))?;
 
-// Enable Phase 4 validation
-classifier.enable_phase4_validation(0.02, 8, 2, 100, 20)?;
+// Enable Advanced Cross-Validation validation
+classifier.enable_advanced_cross_validation_validation(0.02, 8, 2, 100, 20)?;
 
-// Train in hybrid mode with Phase 4
+// Train in hybrid mode with Advanced Cross-Validation
 let results = classifier.train_with_overfitting_detection(X, y, 0.01, true)?;
 
 // Analyze results
@@ -85,7 +85,7 @@ if let Some(analysis) = classifier.get_overfitting_analysis(py)? {
 ### Using Phase4Config Builder
 
 ```rust
-use rust_indicators::ml::components::{Phase4Config, create_phase4_validator};
+use rust_indicators::ml::components::{Phase4Config, create_advanced_cross_validation_validator};
 
 // Create custom configuration
 let config = Phase4Config::new()
@@ -97,7 +97,7 @@ let config = Phase4Config::new()
     .significance_level(0.01);
 
 // Create validator
-let validator = create_phase4_validator(config)?;
+let validator = create_advanced_cross_validation_validator(config)?;
 
 // Use validator
 let splits = validator.create_splits(1000)?;
@@ -112,7 +112,7 @@ use rust_indicators::ml::components::{migrate_to_combinatorial_cv, create_legacy
 // Legacy Phase 3 approach
 let legacy_splits = create_legacy_cv_splits(1000, 5, 0.02)?;
 
-// Migrate to Phase 4
+// Migrate to Advanced Cross-Validation
 let purged_cv = PurgedCrossValidator::default();
 let combinatorial_cv = migrate_to_combinatorial_cv(&purged_cv, 8, 2);
 
@@ -125,7 +125,7 @@ println!("{}", comparison.get_validation_summary());
 
 ### Validation Complexity
 - **Phase 3**: O(k) where k = number of folds (typically 3-5)
-- **Phase 4**: O(C(N,k)) where N = groups, k = test groups (typically 28-56 combinations)
+- **Advanced Cross-Validation**: O(C(N,k)) where N = groups, k = test groups (typically 28-56 combinations)
 
 ### Memory Usage
 - **Additional Memory**: ~10-20% increase for combination storage
@@ -153,11 +153,11 @@ let results = classifier.train_scientific(X, y, 0.01)?;
 ```
 
 ### Gradual Migration
-Enable Phase 4 features incrementally:
+Enable Advanced Cross-Validation features incrementally:
 
 ```rust
-// Step 1: Enable Phase 4 validation
-classifier.enable_phase4_validation(0.02, 8, 2, 100, 20)?;
+// Step 1: Enable Advanced Cross-Validation validation
+classifier.enable_advanced_cross_validation_validation(0.02, 8, 2, 100, 20)?;
 
 // Step 2: Use enhanced training (optional)
 let results = classifier.train_with_overfitting_detection(X, y, 0.01, true)?;
@@ -186,7 +186,7 @@ let analysis = classifier.get_overfitting_analysis(py)?;
 3. **Memory Constraints**
    ```rust
    // Solution: Process combinations in batches
-   let validator = create_phase4_validator(config)?;
+   let validator = create_advanced_cross_validation_validator(config)?;
    if !validator.validate_config(n_samples) {
        // Adjust configuration
    }
@@ -201,7 +201,7 @@ let analysis = classifier.get_overfitting_analysis(py)?;
 - Adjust embargo_pct based on data frequency (higher for high-frequency data)
 
 ### 2. Performance Optimization
-- Use Phase 4 validation during model development
+- Use Advanced Cross-Validation validation during model development
 - Consider traditional CV for production if speed is critical
 - Cache validation results when possible
 
@@ -212,14 +212,14 @@ let analysis = classifier.get_overfitting_analysis(py)?;
 - **PBO > 0.8**: Critical risk, model needs significant revision
 
 ### 4. Integration Strategy
-1. **Development Phase**: Use Phase 4 for thorough validation
-2. **Testing Phase**: Compare Phase 3 vs Phase 4 results
+1. **Development Phase**: Use Advanced Cross-Validation for thorough validation
+2. **Testing Phase**: Compare Phase 3 vs Advanced Cross-Validation results
 3. **Production Phase**: Choose based on performance requirements
-4. **Monitoring Phase**: Periodically re-validate with Phase 4
+4. **Monitoring Phase**: Periodically re-validate with Advanced Cross-Validation
 
 ## Python Integration
 
-All Phase 4 components are fully compatible with Python through PyO3:
+All Advanced Cross-Validation components are fully compatible with Python through PyO3:
 
 ```python
 from rust_indicators import PatternClassifier
@@ -228,8 +228,8 @@ import numpy as np
 # Create classifier
 classifier = PatternClassifier(n_features=7)
 
-# Enable Phase 4 validation
-classifier.enable_phase4_validation(
+# Enable Advanced Cross-Validation validation
+classifier.enable_advanced_cross_validation_validation(
     embargo_pct=0.02,
     n_groups=8,
     test_groups=2,
@@ -238,7 +238,7 @@ classifier.enable_phase4_validation(
 )
 
 # Train with overfitting detection
-results = classifier.train_with_phase4_validation(X, y, 0.01, True)
+results = classifier.train_with_advanced_cross_validation_validation(X, y, 0.01, True)
 
 # Analyze results
 analysis = classifier.get_overfitting_analysis()
@@ -249,4 +249,4 @@ if analysis:
 
 ## Conclusion
 
-Phase 4 integration provides powerful overfitting detection capabilities while maintaining full backward compatibility. The enhanced validation methods offer more robust model evaluation at the cost of increased computation time. Use the convenience APIs and configuration builders to easily integrate Phase 4 into existing workflows.
+Advanced Cross-Validation integration provides powerful overfitting detection capabilities while maintaining full backward compatibility. The enhanced validation methods offer more robust model evaluation at the cost of increased computation time. Use the convenience APIs and configuration builders to easily integrate Advanced Cross-Validation into existing workflows.

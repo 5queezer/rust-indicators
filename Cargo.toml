@@ -1,7 +1,7 @@
 # File: rust_indicators/Cargo.toml
 [package]
 name = "rust_indicators"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 [lib]
@@ -20,7 +20,7 @@ statrs = "0.16"  # For statistical functions and tests
 rayon = "1.10"  # For parallel processing
 lazy_static = "1.4"  # For global static variables
 
-# Phase 1 dependencies for financial time series analysis
+# Core Financial Data Structures dependencies for financial time series analysis
 polars = { version = "0.35", features = ["lazy", "temporal", "strings"] }
 ndarray = { version = "0.15", features = ["approx"] }
 ndarray-stats = "0.5"
@@ -50,6 +50,7 @@ strip = true         # Remove debug symbols
 default = ["mimalloc"]
 gpu = ["cubecl/wgpu", "cubecl-wgpu"]
 cuda = ["gpu", "cubecl/cuda", "cubecl-cuda"]
+advanced_cross_validation = []
 
 # For development with better error messages
 [profile.dev]

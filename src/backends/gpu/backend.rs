@@ -346,7 +346,9 @@ impl IndicatorsBackend for PartialGpuBackend {
         period: usize,
         std_dev: f64,
     ) -> PyResult<crate::indicators::api::BollingerBandsOutput> {
-        let result = self.cpu_backend.bollinger_bands(py, prices, period, std_dev)?;
+        let result = self
+            .cpu_backend
+            .bollinger_bands(py, prices, period, std_dev)?;
         Ok(result)
     }
     gpu_method!(atr, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);

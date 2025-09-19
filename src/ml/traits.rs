@@ -5,8 +5,8 @@
 //! different ML strategies (pattern recognition, trading classification, etc.).
 
 use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 /// Type alias for the return type of predict_batch
@@ -53,8 +53,8 @@ pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
 /// }
 ///
 /// impl MLBackend for MyMLBackend {
-///     fn train_model<'py>(&mut self, py: Python<'py>, 
-///         features: PyReadonlyArray2<'py, f32>, 
+///     fn train_model<'py>(&mut self, py: Python<'py>,
+///         features: PyReadonlyArray2<'py, f32>,
 ///         labels: PyReadonlyArray1<'py, i32>)
 ///         -> PyResult<HashMap<String, f32>> {
 ///         let features_array = features.as_array();
@@ -73,7 +73,7 @@ pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
 ///         Ok(metrics)
 ///     }
 ///
-///     fn predict_with_confidence<'py>(&self, py: Python<'py>, 
+///     fn predict_with_confidence<'py>(&self, py: Python<'py>,
 ///         features: PyReadonlyArray1<'py, f32>) -> PyResult<(i32, f32)> {
 ///         if !self.trained {
 ///             return Err(PyValueError::new_err("Model not trained"));
@@ -605,7 +605,9 @@ pub trait Predictor: Send + Sync + 'static {
     /// - `PyValueError`: If threshold is outside valid range
     fn set_confidence_threshold(&mut self, threshold: f32) -> PyResult<()> {
         if !(0.0..=1.0).contains(&threshold) {
-            return Err(PyValueError::new_err("Confidence threshold must be between 0.0 and 1.0"));
+            return Err(PyValueError::new_err(
+                "Confidence threshold must be between 0.0 and 1.0",
+            ));
         }
         self.set_confidence_threshold_unchecked(threshold);
         Ok(())

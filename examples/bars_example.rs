@@ -1,5 +1,5 @@
 //! Example demonstrating López de Prado's information-driven bar types
-//! 
+//!
 //! This example shows how to use the different bar types for financial data sampling:
 //! - Time bars: Fixed time intervals
 //! - Volume bars: Fixed volume thresholds
@@ -9,7 +9,7 @@
 //! - Run bars: Direction change-driven sampling
 
 use rust_indicators::financial::bars::{BarBuilder, BarType, Tick};
-use time::{OffsetDateTime, Duration};
+use time::{Duration, OffsetDateTime};
 
 fn main() {
     println!("López de Prado's Information-Driven Bar Types Example\n");
@@ -17,13 +17,41 @@ fn main() {
     // Create sample tick data
     let base_time = OffsetDateTime::now_utc();
     let ticks = vec![
-        Tick { timestamp: base_time, price: 100.0, volume: 100 },
-        Tick { timestamp: base_time + Duration::seconds(10), price: 101.0, volume: 150 },
-        Tick { timestamp: base_time + Duration::seconds(20), price: 102.0, volume: 200 },
-        Tick { timestamp: base_time + Duration::seconds(30), price: 101.5, volume: 120 },
-        Tick { timestamp: base_time + Duration::seconds(40), price: 103.0, volume: 180 },
-        Tick { timestamp: base_time + Duration::seconds(50), price: 102.5, volume: 90 },
-        Tick { timestamp: base_time + Duration::seconds(60), price: 104.0, volume: 160 },
+        Tick {
+            timestamp: base_time,
+            price: 100.0,
+            volume: 100,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(10),
+            price: 101.0,
+            volume: 150,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(20),
+            price: 102.0,
+            volume: 200,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(30),
+            price: 101.5,
+            volume: 120,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(40),
+            price: 103.0,
+            volume: 180,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(50),
+            price: 102.5,
+            volume: 90,
+        },
+        Tick {
+            timestamp: base_time + Duration::seconds(60),
+            price: 104.0,
+            volume: 160,
+        },
     ];
 
     // 1. Time Bars Example
@@ -34,15 +62,19 @@ fn main() {
 
     for tick in &ticks {
         if let Some(bar) = time_builder.process_tick(tick) {
-            println!("Time Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
-                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap);
+            println!(
+                "Time Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
+                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap
+            );
         }
     }
 
     // Force complete any remaining bar
     if let Some(bar) = time_builder.force_complete_bar() {
-        println!("Final Time Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
-            bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap);
+        println!(
+            "Final Time Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
+            bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap
+        );
     }
 
     // 2. Volume Bars Example
@@ -51,8 +83,10 @@ fn main() {
 
     for tick in &ticks {
         if let Some(bar) = volume_builder.process_tick(tick) {
-            println!("Volume Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
-                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap);
+            println!(
+                "Volume Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
+                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap
+            );
         }
     }
 
@@ -67,8 +101,10 @@ fn main() {
 
     for tick in &ticks {
         if let Some(bar) = dollar_builder.process_tick(tick) {
-            println!("Dollar Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
-                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap);
+            println!(
+                "Dollar Bar: Open={:.2}, High={:.2}, Low={:.2}, Close={:.2}, Volume={}, VWAP={:.2}",
+                bar.open, bar.high, bar.low, bar.close, bar.volume, bar.vwap
+            );
         }
     }
 
@@ -95,7 +131,8 @@ fn main() {
 
     // 5. Volume Imbalance Bars Example
     println!("\n=== Volume Imbalance Bars (threshold=100.0) ===");
-    let mut volume_imbalance_builder = BarBuilder::new(BarType::VolumeImbalance { threshold: 100.0 });
+    let mut volume_imbalance_builder =
+        BarBuilder::new(BarType::VolumeImbalance { threshold: 100.0 });
 
     for tick in &ticks {
         if let Some(bar) = volume_imbalance_builder.process_tick(tick) {

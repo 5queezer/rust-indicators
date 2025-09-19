@@ -275,7 +275,9 @@ impl IndicatorsBackend for AdaptiveBackend {
             }
         }
 
-        let result = self.cpu_backend.bollinger_bands(py, prices, period, std_dev)?;
+        let result = self
+            .cpu_backend
+            .bollinger_bands(py, prices, period, std_dev)?;
         Ok(result)
     }
 

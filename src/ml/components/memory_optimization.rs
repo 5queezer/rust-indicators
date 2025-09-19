@@ -3,10 +3,10 @@
 //! Memory optimization and allocation reduction utilities for ML components
 //! to improve performance and reduce memory footprint across all models.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use crate::ml::components::cross_validation::CVSplitsOutput;
 use numpy::ndarray;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Memory pool for reusing frequently allocated objects
 pub struct MemoryPool<T> {
@@ -16,7 +16,7 @@ pub struct MemoryPool<T> {
 
 impl<T> MemoryPool<T> {
     /// Create a new memory pool with a factory function
-    pub fn new<F>(factory: F) -> Self 
+    pub fn new<F>(factory: F) -> Self
     where
         F: Fn() -> T + Send + Sync + 'static,
     {
@@ -81,7 +81,7 @@ pub struct ComputationCache<K, V> {
     max_size: usize,
 }
 
-impl<K, V> ComputationCache<K, V> 
+impl<K, V> ComputationCache<K, V>
 where
     K: std::hash::Hash + Eq + Clone,
     V: Clone,
@@ -100,14 +100,14 @@ where
         F: FnOnce() -> V,
     {
         let mut cache = self.cache.lock().unwrap();
-        
+
         if let Some(value) = cache.get(&key) {
             return value.clone();
         }
 
         // Compute the value
         let value = compute_fn();
-        
+
         // Check if we need to evict entries
         if cache.len() >= self.max_size {
             // Simple LRU: remove first entry (not optimal but simple)
@@ -115,7 +115,7 @@ where
                 cache.remove(&first_key);
             }
         }
-        
+
         cache.insert(key, value.clone());
         value
     }
@@ -147,7 +147,7 @@ impl ArrayOperations {
     pub fn standardize_inplace(arr: &mut ndarray::Array1<f32>) {
         let mean = arr.mean().unwrap_or(0.0);
         let std = arr.std(0.0);
-        
+
         if std != 0.0 {
             arr.mapv_inplace(|x| (x - mean) / std);
         }
@@ -204,21 +204,21 @@ impl FeatureProcessor {
         _processor_id: &str,
     ) -> Result<(), String> {
         let (n_samples, n_features) = features.dim();
-        
+
         // Reuse buffer for temporary computations
         self.temp_buffer.clear();
         self.temp_buffer.reserve(n_features);
-        
+
         for i in 0..n_samples {
             let mut row = features.row_mut(i);
-            
+
             // Example processing: normalize each row
             let sum: f32 = row.iter().sum();
             if sum != 0.0 {
                 row.mapv_inplace(|x| x / sum);
             }
         }
-        
+
         Ok(())
     }
 
@@ -364,15 +364,15 @@ mod tests {
     #[test]
     fn test_memory_pool() {
         let pool = MemoryPool::new(|| Vec::<i32>::new());
-        
+
         {
             let mut obj1 = pool.get();
             obj1.get_mut().push(42);
             assert_eq!(obj1.get()[0], 42);
         } // obj1 is returned to pool here
-        
+
         assert_eq!(pool.size(), 1);
-        
+
         let obj2 = pool.get();
         assert_eq!(obj2.get().len(), 1); // Reused the previous vector
     }
@@ -380,13 +380,13 @@ mod tests {
     #[test]
     fn test_computation_cache() {
         let cache = ComputationCache::new(2);
-        
+
         let result1 = cache.get_or_compute("key1".to_string(), || 42);
         assert_eq!(result1, 42);
-        
+
         let result2 = cache.get_or_compute("key1".to_string(), || 100);
         assert_eq!(result2, 42); // Should return cached value
-        
+
         assert_eq!(cache.size(), 1);
     }
 
@@ -394,7 +394,7 @@ mod tests {
     fn test_array_operations() {
         let mut arr = ndarray::Array1::from(vec![1.0, 2.0, 3.0, 4.0]);
         ArrayOperations::normalize_inplace(&mut arr);
-        
+
         let sum: f32 = arr.sum();
         assert!((sum - 1.0).abs() < 1e-6);
     }
@@ -402,10 +402,13 @@ mod tests {
     #[test]
     fn test_feature_processor() {
         let mut processor = FeatureProcessor::new(100, 10);
-        let mut features = ndarray::Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
-        
-        processor.process_features_inplace(&mut features, "test").unwrap();
-        
+        let mut features =
+            ndarray::Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+
+        processor
+            .process_features_inplace(&mut features, "test")
+            .unwrap();
+
         // Check that rows are normalized
         let row1_sum: f32 = features.row(0).sum();
         let row2_sum: f32 = features.row(1).sum();
@@ -416,12 +419,12 @@ mod tests {
     #[test]
     fn test_memory_optimizer() {
         let optimizer = MemoryOptimizer::new();
-        
+
         {
             let _vec = optimizer.get_feature_vector();
             let _arr = optimizer.get_array();
         }
-        
+
         let stats = optimizer.get_stats();
         assert_eq!(stats.feature_pool_size, 1);
         assert_eq!(stats.array_pool_size, 1);

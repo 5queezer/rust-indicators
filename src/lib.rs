@@ -23,7 +23,7 @@ pub mod utils;
 pub use features::RustFeatures;
 pub use financial::FinancialSeries;
 pub use indicators::RustTA;
-pub use ml::{PatternClassifier, TradingClassifier, UnifiedClassifier, ClassifierMode};
+pub use ml::{ClassifierMode, PatternClassifier, TradingClassifier, UnifiedClassifier};
 
 /// Python module definition
 #[pymodule]

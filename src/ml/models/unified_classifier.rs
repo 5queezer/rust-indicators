@@ -181,19 +181,22 @@
 //! # Use both embargo and pattern duration
 //! ```
 
-use pyo3::prelude::*;
+use numpy::{
+    ndarray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2, ToPyArray,
+};
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods, ToPyArray, ndarray};
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 use crate::extract_safe;
-use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
-    PatternLabeler, TripleBarrierLabeler, PatternWeighting, VolatilityWeighting,
-    PatternAwareCrossValidator, PurgedCrossValidator, PredictionEngine, SampleWeightCalculator,
-    PBOResult,
-    phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
+    advanced_cross_validation_integration::{
+        Phase4Capable, Phase4Config, Phase4Results, Phase4Workflow,
+    },
+    PBOResult, PatternAwareCrossValidator, PatternLabeler, PatternWeighting, PredictionEngine,
+    PurgedCrossValidator, SampleWeightCalculator, TripleBarrierLabeler, VolatilityWeighting,
 };
+use crate::ml::traits::{CrossValidator, LabelGenerator, MLBackend, Predictor};
 
 /// Operating mode for the unified classifier
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -232,29 +235,31 @@ impl ClassifierMode {
 pub struct UnifiedClassifier {
     // Operating mode
     mode: ClassifierMode,
-    
+
     // Shared components for pattern recognition
     pattern_labeler: PatternLabeler,
+    #[allow(dead_code)]
     pattern_weighting: PatternWeighting,
     pattern_cv: PatternAwareCrossValidator,
-    
+
     // Shared components for trading classification
     triple_barrier_labeler: TripleBarrierLabeler,
+    #[allow(dead_code)]
     volatility_weighting: VolatilityWeighting,
     purged_cv: PurgedCrossValidator,
-    
+
     // Common components
     prediction_engine: PredictionEngine,
     sample_weight_calculator: SampleWeightCalculator,
-    
-    // Phase 4 integration
-    phase4_workflow: Option<Phase4Workflow>,
-    
+
+    // Advanced Cross-Validation integration
+    advanced_cross_validation_workflow: Option<Phase4Workflow>,
+
     // Model parameters
     n_features: usize,
     embargo_pct: f32,
     pattern_duration: usize,
-    
+
     // Model state
     pattern_weights: Vec<f32>,
     trading_weights: Vec<f32>,
@@ -262,11 +267,11 @@ pub struct UnifiedClassifier {
     feature_importance: Vec<f32>,
     sample_weights: Vec<f32>,
     trained: bool,
-    
+
     // Cross-validation splits
     cv_splits: Vec<(Vec<usize>, Vec<usize>)>,
-    
-    // Phase 4 validation results
+
+    // Advanced Cross-Validation validation results
     pbo_result: Option<PBOResult>,
 }
 
@@ -276,7 +281,7 @@ impl UnifiedClassifier {
     #[new]
     fn new(n_features: usize, mode: Option<ClassifierMode>) -> PyResult<Self> {
         let mode = mode.unwrap_or(ClassifierMode::Hybrid);
-        
+
         Ok(UnifiedClassifier {
             mode,
             pattern_labeler: PatternLabeler::default(),
@@ -287,7 +292,7 @@ impl UnifiedClassifier {
             purged_cv: PurgedCrossValidator::default(),
             prediction_engine: PredictionEngine::default(),
             sample_weight_calculator: SampleWeightCalculator::default(),
-            phase4_workflow: None,
+            advanced_cross_validation_workflow: None,
             n_features,
             embargo_pct: 0.01,
             pattern_duration: 10,
@@ -328,9 +333,10 @@ impl UnifiedClassifier {
         let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, n_features)
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features, n_features
+            )));
         }
 
         if n_samples != y_array.len() {
@@ -435,7 +441,13 @@ impl UnifiedClassifier {
         max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
         <Self as LabelGenerator>::create_triple_barrier_labels(
-            self, py, prices, volatility, profit_mult, stop_mult, max_hold
+            self,
+            py,
+            prices,
+            volatility,
+            profit_mult,
+            stop_mult,
+            max_hold,
         )
     }
 
@@ -482,12 +494,17 @@ impl UnifiedClassifier {
         n_splits: usize,
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        <Self as CrossValidator>::create_pattern_aware_cv_splits(self, n_samples, n_splits, pattern_duration)
+        <Self as CrossValidator>::create_pattern_aware_cv_splits(
+            self,
+            n_samples,
+            n_splits,
+            pattern_duration,
+        )
     }
 
-    /// Enable Phase 4 overfitting detection with CombinatorialPurgedCV
+    /// Enable Advanced Cross-Validation overfitting detection with CombinatorialPurgedCV
     #[pyo3(signature = (embargo_pct=0.02, n_groups=8, test_groups=2, min_train_size=100, min_test_size=20))]
-    fn enable_phase4_validation(
+    fn enable_advanced_cross_validation_validation(
         &mut self,
         embargo_pct: f32,
         n_groups: usize,
@@ -502,12 +519,12 @@ impl UnifiedClassifier {
             .min_train_size(min_train_size)
             .min_test_size(min_test_size)
             .build();
-        
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
+
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
         Ok(())
     }
 
-    /// Train with Phase 4 enhanced validation and overfitting detection
+    /// Train with Advanced Cross-Validation enhanced validation and overfitting detection
     #[pyo3(signature = (x, y, learning_rate, use_combinatorial_cv=true))]
     fn train_with_overfitting_detection(
         &mut self,
@@ -523,9 +540,10 @@ impl UnifiedClassifier {
         let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, n_features)
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features, n_features
+            )));
         }
 
         if n_samples != y_array.len() {
@@ -537,90 +555,133 @@ impl UnifiedClassifier {
             self.sample_weights = vec![1.0; n_samples];
         }
 
-        // Use Phase 4 workflow if available and requested
-        if use_combinatorial_cv && self.phase4_workflow.is_some() {
-            let workflow = self.phase4_workflow.as_ref().unwrap();
-            
+        // Use Advanced Cross-Validation workflow if available and requested
+        if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
+            let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+
             // Define evaluation function based on current mode
-            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+            let evaluate_fn = |train_idx: &[usize],
+                               test_idx: &[usize],
+                               _combo_id: usize|
+             -> PyResult<(f32, f32)> {
                 let result = match self.mode {
-                    ClassifierMode::Pattern => self.train_pattern_fold(&x_array, &y_array, train_idx, test_idx, learning_rate),
-                    ClassifierMode::Trading => self.train_trading_fold(&x_array, &y_array, train_idx, test_idx, learning_rate),
+                    ClassifierMode::Pattern => self.train_pattern_fold(
+                        &x_array,
+                        &y_array,
+                        train_idx,
+                        test_idx,
+                        learning_rate,
+                    ),
+                    ClassifierMode::Trading => self.train_trading_fold(
+                        &x_array,
+                        &y_array,
+                        train_idx,
+                        test_idx,
+                        learning_rate,
+                    ),
                     ClassifierMode::Hybrid => {
                         // For hybrid mode, average both approaches
-                        let pattern_result = self.train_pattern_fold(&x_array, &y_array, train_idx, test_idx, learning_rate);
-                        let trading_result = self.train_trading_fold(&x_array, &y_array, train_idx, test_idx, learning_rate);
+                        let pattern_result = self.train_pattern_fold(
+                            &x_array,
+                            &y_array,
+                            train_idx,
+                            test_idx,
+                            learning_rate,
+                        );
+                        let trading_result = self.train_trading_fold(
+                            &x_array,
+                            &y_array,
+                            train_idx,
+                            test_idx,
+                            learning_rate,
+                        );
                         match (pattern_result, trading_result) {
-                            (Ok((p_score, _)), Ok((t_score, _))) => Ok(((p_score + t_score) / 2.0, vec![0.0; self.n_features])),
+                            (Ok((p_score, _)), Ok((t_score, _))) => {
+                                Ok(((p_score + t_score) / 2.0, vec![0.0; self.n_features]))
+                            }
                             (Ok(result), _) | (_, Ok(result)) => Ok(result),
                             (Err(e), _) => Err(e),
                         }
                     }
                 };
-                
+
                 match result {
                     Ok((score, _)) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
                 }
             };
-            
-            // Execute Phase 4 workflow
+
+            // Execute Advanced Cross-Validation workflow
             let mut workflow_clone = workflow.clone();
             match workflow_clone.execute_validation(n_samples, evaluate_fn) {
                 Ok(results) => {
                     // Store PBO result before moving results
                     let pbo_result = results.pbo_result.clone();
                     self.pbo_result = pbo_result.clone();
-                    
+
                     // Update feature importance based on results
                     for i in 0..n_features {
                         self.feature_importance[i] = results.cv_mean;
                     }
-                    
+
                     // Train final models based on mode
                     match self.mode {
                         ClassifierMode::Pattern => {
-                            self.pattern_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
-                        },
+                            self.pattern_weights =
+                                self.train_final_model(&x_array, &y_array, learning_rate)?;
+                        }
                         ClassifierMode::Trading => {
-                            self.trading_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
-                        },
+                            self.trading_weights =
+                                self.train_final_model(&x_array, &y_array, learning_rate)?;
+                        }
                         ClassifierMode::Hybrid => {
-                            self.pattern_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
-                            self.trading_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
+                            self.pattern_weights =
+                                self.train_final_model(&x_array, &y_array, learning_rate)?;
+                            self.trading_weights =
+                                self.train_final_model(&x_array, &y_array, learning_rate)?;
                             for i in 0..self.n_features {
-                                self.hybrid_weights[i] = (self.pattern_weights[i] + self.trading_weights[i]) / 2.0;
+                                self.hybrid_weights[i] =
+                                    (self.pattern_weights[i] + self.trading_weights[i]) / 2.0;
                             }
                         }
                     }
-                    
+
                     self.trained = true;
-                    
+
                     // Convert Phase4Results to HashMap
                     let mut result_map = HashMap::new();
                     result_map.insert("cv_mean".to_string(), results.cv_mean);
                     result_map.insert("cv_std".to_string(), results.cv_std);
                     result_map.insert("n_folds".to_string(), results.n_splits as f32);
-                    result_map.insert("mode".to_string(), match self.mode {
-                        ClassifierMode::Pattern => 1.0,
-                        ClassifierMode::Trading => 2.0,
-                        ClassifierMode::Hybrid => 3.0,
-                    });
-                    
+                    result_map.insert(
+                        "mode".to_string(),
+                        match self.mode {
+                            ClassifierMode::Pattern => 1.0,
+                            ClassifierMode::Trading => 2.0,
+                            ClassifierMode::Hybrid => 3.0,
+                        },
+                    );
+
                     if let Some(pbo_result) = &pbo_result {
                         result_map.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-                        result_map.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-                        result_map.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
+                        result_map.insert(
+                            "is_overfit".to_string(),
+                            if pbo_result.is_overfit { 1.0 } else { 0.0 },
+                        );
+                        result_map.insert(
+                            "statistical_significance".to_string(),
+                            pbo_result.statistical_significance as f32,
+                        );
                     }
-                    
+
                     return Ok(result_map);
-                },
+                }
                 Err(e) => {
-                    println!("Phase 4 workflow failed, falling back to traditional training: {}", e);
+                    println!("Advanced Cross-Validation workflow failed, falling back to traditional training: {}", e);
                 }
             }
         }
-        
+
         // Fallback to traditional training based on mode
         match self.mode {
             ClassifierMode::Pattern => self.train_pattern_mode(&x_array, &y_array, learning_rate),
@@ -634,21 +695,36 @@ impl UnifiedClassifier {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
-            
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
+
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
 
-    /// Check if Phase 4 validation is enabled
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+    /// Check if Advanced Cross-Validation validation is enabled
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
 
     /// Get overfitting risk assessment
@@ -661,7 +737,7 @@ impl UnifiedClassifier {
                 _ => "🟢 LOW: Good generalization expected".to_string(),
             }
         } else {
-            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+            "❓ UNKNOWN: Enable Advanced Cross-Validation validation for assessment".to_string()
         }
     }
 }
@@ -678,18 +754,17 @@ impl UnifiedClassifier {
         let (n_samples, _) = x.dim();
 
         // Create pattern-aware cross-validation splits
-        self.cv_splits = self.pattern_cv.create_pattern_aware_cv_splits(
-            n_samples, 3, self.pattern_duration
-        )?;
+        self.cv_splits =
+            self.pattern_cv
+                .create_pattern_aware_cv_splits(n_samples, 3, self.pattern_duration)?;
 
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
-            let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                x, y, train_idx, test_idx, learning_rate
-            )?;
+            let (fold_score, fold_feature_importance) =
+                self.train_pattern_fold(x, y, train_idx, test_idx, learning_rate)?;
 
             cv_scores.push(fold_score);
 
@@ -709,9 +784,11 @@ impl UnifiedClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
@@ -731,18 +808,17 @@ impl UnifiedClassifier {
         let (n_samples, _) = x.dim();
 
         // Create purged cross-validation splits
-        self.cv_splits = self.purged_cv.create_purged_cv_splits(
-            n_samples, 3, self.embargo_pct
-        )?;
+        self.cv_splits = self
+            .purged_cv
+            .create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
 
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
-            let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                x, y, train_idx, test_idx, learning_rate
-            )?;
+            let (fold_score, fold_feature_importance) =
+                self.train_trading_fold(x, y, train_idx, test_idx, learning_rate)?;
 
             cv_scores.push(fold_score);
 
@@ -762,9 +838,11 @@ impl UnifiedClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
@@ -829,7 +907,11 @@ impl UnifiedClassifier {
             }
         }
 
-        let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
+        let accuracy = if total > 0 {
+            correct as f32 / total as f32
+        } else {
+            0.0
+        };
         Ok((accuracy, feature_correlations))
     }
 
@@ -859,7 +941,11 @@ impl UnifiedClassifier {
             }
         }
 
-        let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
+        let accuracy = if total > 0 {
+            correct as f32 / total as f32
+        } else {
+            0.0
+        };
         Ok((accuracy, feature_correlations))
     }
 
@@ -869,7 +955,8 @@ impl UnifiedClassifier {
             return Err(PyValueError::new_err("Feature dimension mismatch"));
         }
 
-        let weighted_sum = features.iter()
+        let weighted_sum = features
+            .iter()
             .zip(&self.pattern_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
@@ -894,7 +981,8 @@ impl UnifiedClassifier {
             return Err(PyValueError::new_err("Feature dimension mismatch"));
         }
 
-        let weighted_sum = features.iter()
+        let weighted_sum = features
+            .iter()
             .zip(&self.trading_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
@@ -919,7 +1007,8 @@ impl UnifiedClassifier {
             return Err(PyValueError::new_err("Feature dimension mismatch"));
         }
 
-        let weighted_sum = features.iter()
+        let weighted_sum = features
+            .iter()
             .zip(&self.hybrid_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
@@ -955,7 +1044,8 @@ impl UnifiedClassifier {
 
             for i in 0..n_samples {
                 let features: Vec<f32> = x.row(i).to_vec();
-                let prediction = features.iter()
+                let prediction = features
+                    .iter()
                     .zip(&weights)
                     .map(|(f, w)| f * w)
                     .sum::<f32>()
@@ -985,8 +1075,9 @@ impl UnifiedClassifier {
         Ok(weights)
     }
 
-    /// Train pattern mode with Phase 4 validation
-    fn train_pattern_mode_with_phase4(
+    /// Train pattern mode with Advanced Cross-Validation validation
+    #[allow(dead_code)]
+    fn train_pattern_mode_with_advanced_cross_validation(
         &mut self,
         x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
@@ -997,17 +1088,21 @@ impl UnifiedClassifier {
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
-        if use_combinatorial_cv && self.phase4_workflow.is_some() {
+        if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
             // Use CombinatorialPurgedCV for enhanced validation
-            let workflow = self.phase4_workflow.as_ref().unwrap();
-            let combinatorial_splits = workflow.combinatorial_cv.create_combinatorial_splits(n_samples)?;
-            
-            println!("Pattern Mode: Using CombinatorialPurgedCV with {} splits", combinatorial_splits.len());
-            
+            let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+            let combinatorial_splits = workflow
+                .combinatorial_cv
+                .create_combinatorial_splits(n_samples)?;
+
+            println!(
+                "Pattern Mode: Using CombinatorialPurgedCV with {} splits",
+                combinatorial_splits.len()
+            );
+
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
-                let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                    x, y, train_idx, test_idx, learning_rate
-                )?;
+                let (fold_score, fold_feature_importance) =
+                    self.train_pattern_fold(x, y, train_idx, test_idx, learning_rate)?;
 
                 cv_scores.push(fold_score);
                 for i in 0..self.n_features {
@@ -1016,19 +1111,27 @@ impl UnifiedClassifier {
             }
 
             // Calculate PBO if overfitting detector is available
-            if let Some(workflow) = &self.phase4_workflow {
+            if let Some(workflow) = &self.advanced_cross_validation_workflow {
                 let performance_scores: Vec<f64> = cv_scores.iter().map(|&x| x as f64).collect();
                 let in_sample: Vec<f64> = performance_scores.iter().map(|x| x + 0.02).collect();
                 let out_sample: Vec<f64> = performance_scores;
-                
-                match workflow.overfitting_detector.calculate_pbo(&in_sample, &out_sample) {
+
+                match workflow
+                    .overfitting_detector
+                    .calculate_pbo(&in_sample, &out_sample)
+                {
                     Ok(pbo_result) => {
                         self.pbo_result = Some(pbo_result);
-                        println!("Pattern Mode PBO: {:.3} ({})",
+                        println!(
+                            "Pattern Mode PBO: {:.3} ({})",
                             self.pbo_result.as_ref().unwrap().pbo_value,
-                            if self.pbo_result.as_ref().unwrap().is_overfit { "⚠️ Overfit Risk" } else { "✅ Good Generalization" }
+                            if self.pbo_result.as_ref().unwrap().is_overfit {
+                                "⚠️ Overfit Risk"
+                            } else {
+                                "✅ Good Generalization"
+                            }
                         );
-                    },
+                    }
                     Err(e) => println!("PBO calculation failed: {}", e),
                 }
             }
@@ -1040,13 +1143,14 @@ impl UnifiedClassifier {
         } else {
             // Use traditional pattern-aware CV
             self.cv_splits = self.pattern_cv.create_pattern_aware_cv_splits(
-                n_samples, 3, self.pattern_duration
+                n_samples,
+                3,
+                self.pattern_duration,
             )?;
 
             for (train_idx, test_idx) in &self.cv_splits {
-                let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                    x, y, train_idx, test_idx, learning_rate
-                )?;
+                let (fold_score, fold_feature_importance) =
+                    self.train_pattern_fold(x, y, train_idx, test_idx, learning_rate)?;
 
                 cv_scores.push(fold_score);
                 for i in 0..self.n_features {
@@ -1064,9 +1168,11 @@ impl UnifiedClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
@@ -1076,8 +1182,9 @@ impl UnifiedClassifier {
         Ok(results)
     }
 
-    /// Train trading mode with Phase 4 validation
-    fn train_trading_mode_with_phase4(
+    /// Train trading mode with Advanced Cross-Validation validation
+    #[allow(dead_code)]
+    fn train_trading_mode_with_advanced_cross_validation(
         &mut self,
         x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
@@ -1088,17 +1195,21 @@ impl UnifiedClassifier {
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
-        if use_combinatorial_cv && self.phase4_workflow.is_some() {
+        if use_combinatorial_cv && self.advanced_cross_validation_workflow.is_some() {
             // Use CombinatorialPurgedCV for enhanced validation
-            let workflow = self.phase4_workflow.as_ref().unwrap();
-            let combinatorial_splits = workflow.combinatorial_cv.create_combinatorial_splits(n_samples)?;
-            
-            println!("Trading Mode: Using CombinatorialPurgedCV with {} splits", combinatorial_splits.len());
-            
+            let workflow = self.advanced_cross_validation_workflow.as_ref().unwrap();
+            let combinatorial_splits = workflow
+                .combinatorial_cv
+                .create_combinatorial_splits(n_samples)?;
+
+            println!(
+                "Trading Mode: Using CombinatorialPurgedCV with {} splits",
+                combinatorial_splits.len()
+            );
+
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
-                let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                    x, y, train_idx, test_idx, learning_rate
-                )?;
+                let (fold_score, fold_feature_importance) =
+                    self.train_trading_fold(x, y, train_idx, test_idx, learning_rate)?;
 
                 cv_scores.push(fold_score);
                 for i in 0..self.n_features {
@@ -1107,19 +1218,27 @@ impl UnifiedClassifier {
             }
 
             // Calculate PBO if overfitting detector is available
-            if let Some(workflow) = &self.phase4_workflow {
+            if let Some(workflow) = &self.advanced_cross_validation_workflow {
                 let performance_scores: Vec<f64> = cv_scores.iter().map(|&x| x as f64).collect();
                 let in_sample: Vec<f64> = performance_scores.iter().map(|x| x + 0.03).collect();
                 let out_sample: Vec<f64> = performance_scores;
-                
-                match workflow.overfitting_detector.calculate_pbo(&in_sample, &out_sample) {
+
+                match workflow
+                    .overfitting_detector
+                    .calculate_pbo(&in_sample, &out_sample)
+                {
                     Ok(pbo_result) => {
                         self.pbo_result = Some(pbo_result);
-                        println!("Trading Mode PBO: {:.3} ({})",
+                        println!(
+                            "Trading Mode PBO: {:.3} ({})",
                             self.pbo_result.as_ref().unwrap().pbo_value,
-                            if self.pbo_result.as_ref().unwrap().is_overfit { "⚠️ Overfit Risk" } else { "✅ Good Generalization" }
+                            if self.pbo_result.as_ref().unwrap().is_overfit {
+                                "⚠️ Overfit Risk"
+                            } else {
+                                "✅ Good Generalization"
+                            }
                         );
-                    },
+                    }
                     Err(e) => println!("PBO calculation failed: {}", e),
                 }
             }
@@ -1130,14 +1249,13 @@ impl UnifiedClassifier {
             }
         } else {
             // Use traditional purged CV
-            self.cv_splits = self.purged_cv.create_purged_cv_splits(
-                n_samples, 3, self.embargo_pct
-            )?;
+            self.cv_splits =
+                self.purged_cv
+                    .create_purged_cv_splits(n_samples, 3, self.embargo_pct)?;
 
             for (train_idx, test_idx) in &self.cv_splits {
-                let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                    x, y, train_idx, test_idx, learning_rate
-                )?;
+                let (fold_score, fold_feature_importance) =
+                    self.train_trading_fold(x, y, train_idx, test_idx, learning_rate)?;
 
                 cv_scores.push(fold_score);
                 for i in 0..self.n_features {
@@ -1155,9 +1273,11 @@ impl UnifiedClassifier {
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
-        let variance = cv_scores.iter()
+        let variance = cv_scores
+            .iter()
             .map(|&x| (x - mean_score).powi(2))
-            .sum::<f32>() / cv_scores.len() as f32;
+            .sum::<f32>()
+            / cv_scores.len() as f32;
 
         let mut results = HashMap::new();
         results.insert("cv_mean".to_string(), mean_score);
@@ -1167,17 +1287,28 @@ impl UnifiedClassifier {
         Ok(results)
     }
 
-    /// Train hybrid mode with Phase 4 validation
-    fn train_hybrid_mode_with_phase4(
+    /// Train hybrid mode with Advanced Cross-Validation validation
+    #[allow(dead_code)]
+    fn train_hybrid_mode_with_advanced_cross_validation(
         &mut self,
         x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        // Train both pattern and trading components with Phase 4
-        let pattern_results = self.train_pattern_mode_with_phase4(x, y, learning_rate, use_combinatorial_cv)?;
-        let trading_results = self.train_trading_mode_with_phase4(x, y, learning_rate, use_combinatorial_cv)?;
+        // Train both pattern and trading components with Advanced Cross-Validation
+        let pattern_results = self.train_pattern_mode_with_advanced_cross_validation(
+            x,
+            y,
+            learning_rate,
+            use_combinatorial_cv,
+        )?;
+        let trading_results = self.train_trading_mode_with_advanced_cross_validation(
+            x,
+            y,
+            learning_rate,
+            use_combinatorial_cv,
+        )?;
 
         // Combine weights (simple average for now)
         for i in 0..self.n_features {
@@ -1225,9 +1356,11 @@ impl MLBackend for UnifiedClassifier {
         let feats = extract_safe!(features_array, "features");
 
         if feats.len() != self.n_features {
-            return Err(PyValueError::new_err(
-                format!("Expected {} features, got {}", self.n_features, feats.len())
-            ));
+            return Err(PyValueError::new_err(format!(
+                "Expected {} features, got {}",
+                self.n_features,
+                feats.len()
+            )));
         }
 
         match self.mode {
@@ -1253,9 +1386,9 @@ impl MLBackend for UnifiedClassifier {
         self.trading_weights = vec![0.0; self.n_features];
         self.hybrid_weights = vec![0.0; self.n_features];
         self.cv_splits.clear();
-        // Reset Phase 4 components
+        // Reset Advanced Cross-Validation components
         self.pbo_result = None;
-        // Keep phase4_workflow as it is configuration
+        // Keep advanced_cross_validation_workflow as it is configuration
     }
 }
 
@@ -1274,7 +1407,12 @@ impl LabelGenerator for UnifiedClassifier {
         max_hold: usize,
     ) -> PyResult<Py<PyArray1<i32>>> {
         self.triple_barrier_labeler.create_triple_barrier_labels(
-            py, prices, volatility, profit_mult, stop_mult, max_hold
+            py,
+            prices,
+            volatility,
+            profit_mult,
+            stop_mult,
+            max_hold,
         )
     }
 
@@ -1284,7 +1422,8 @@ impl LabelGenerator for UnifiedClassifier {
         ohlc_data: crate::ml::traits::OHLCData<'py>,
         params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
+        self.pattern_labeler
+            .create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(
@@ -1296,14 +1435,16 @@ impl LabelGenerator for UnifiedClassifier {
         match self.mode {
             ClassifierMode::Pattern => {
                 // For pattern mode, use volatility weights if no pattern signals available
-                self.sample_weight_calculator.calculate_volatility_weights(py, returns)
+                self.sample_weight_calculator
+                    .calculate_volatility_weights(py, returns)
             }
-            ClassifierMode::Trading => {
-                self.sample_weight_calculator.calculate_volatility_weights(py, returns)
-            }
+            ClassifierMode::Trading => self
+                .sample_weight_calculator
+                .calculate_volatility_weights(py, returns),
             ClassifierMode::Hybrid => {
                 // Use volatility weights for hybrid mode
-                self.sample_weight_calculator.calculate_volatility_weights(py, returns)
+                self.sample_weight_calculator
+                    .calculate_volatility_weights(py, returns)
             }
         }
     }
@@ -1316,7 +1457,8 @@ impl CrossValidator for UnifiedClassifier {
         n_splits: usize,
         embargo_pct: f32,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.purged_cv.create_purged_cv_splits(n_samples, n_splits, embargo_pct)
+        self.purged_cv
+            .create_purged_cv_splits(n_samples, n_splits, embargo_pct)
     }
 
     fn create_pattern_aware_cv_splits(
@@ -1325,7 +1467,8 @@ impl CrossValidator for UnifiedClassifier {
         n_splits: usize,
         pattern_duration: usize,
     ) -> PyResult<Vec<(Vec<usize>, Vec<usize>)>> {
-        self.pattern_cv.create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
+        self.pattern_cv
+            .create_pattern_aware_cv_splits(n_samples, n_splits, pattern_duration)
     }
 
     fn validate_cv_splits(
@@ -1334,7 +1477,8 @@ impl CrossValidator for UnifiedClassifier {
         min_train_size: usize,
         min_test_size: usize,
     ) -> bool {
-        self.purged_cv.validate_cv_splits(splits, min_train_size, min_test_size)
+        self.purged_cv
+            .validate_cv_splits(splits, min_train_size, min_test_size)
     }
 }
 
@@ -1368,11 +1512,13 @@ impl Predictor for UnifiedClassifier {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.prediction_engine.get_prediction_explanation(py, features)
+        self.prediction_engine
+            .get_prediction_explanation(py, features)
     }
 
     fn set_confidence_threshold_unchecked(&mut self, threshold: f32) {
-        self.prediction_engine.set_confidence_threshold_unchecked(threshold);
+        self.prediction_engine
+            .set_confidence_threshold_unchecked(threshold);
     }
 
     fn get_confidence_threshold(&self) -> f32 {
@@ -1382,20 +1528,22 @@ impl Predictor for UnifiedClassifier {
 
 // Implement Phase4Capable trait
 impl Phase4Capable for UnifiedClassifier {
-    fn enable_phase4(&mut self, config: Phase4Config) -> PyResult<()> {
-        self.phase4_workflow = Some(Phase4Workflow::new(config));
+    fn enable_advanced_cross_validation(&mut self, config: Phase4Config) -> PyResult<()> {
+        self.advanced_cross_validation_workflow = Some(Phase4Workflow::new(config));
         Ok(())
     }
-    
-    fn is_phase4_enabled(&self) -> bool {
-        self.phase4_workflow.is_some()
+
+    fn is_advanced_cross_validation_enabled(&self) -> bool {
+        self.advanced_cross_validation_workflow.is_some()
     }
-    
-    fn get_phase4_config(&self) -> Option<&Phase4Config> {
-        self.phase4_workflow.as_ref().map(|w| &w.config)
+
+    fn get_advanced_cross_validation_config(&self) -> Option<&Phase4Config> {
+        self.advanced_cross_validation_workflow
+            .as_ref()
+            .map(|w| &w.config)
     }
-    
-    fn train_with_phase4(
+
+    fn train_with_advanced_cross_validation(
         &mut self,
         features: &pyo3::Bound<'_, PyArray2<f32>>,
         labels: &pyo3::Bound<'_, PyArray1<i32>>,
@@ -1406,51 +1554,95 @@ impl Phase4Capable for UnifiedClassifier {
         let features_array = features.as_array();
         let labels_array = labels.as_array();
         let (n_samples, _) = features_array.dim();
-        
-        if let Some(workflow) = &self.phase4_workflow {
-            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+
+        if let Some(workflow) = &self.advanced_cross_validation_workflow {
+            let evaluate_fn = |train_idx: &[usize],
+                               test_idx: &[usize],
+                               _combo_id: usize|
+             -> PyResult<(f32, f32)> {
                 let result = match self.mode {
-                    ClassifierMode::Pattern => self.train_pattern_fold(&features_array, &labels_array, train_idx, test_idx, learning_rate),
-                    ClassifierMode::Trading => self.train_trading_fold(&features_array, &labels_array, train_idx, test_idx, learning_rate),
+                    ClassifierMode::Pattern => self.train_pattern_fold(
+                        &features_array,
+                        &labels_array,
+                        train_idx,
+                        test_idx,
+                        learning_rate,
+                    ),
+                    ClassifierMode::Trading => self.train_trading_fold(
+                        &features_array,
+                        &labels_array,
+                        train_idx,
+                        test_idx,
+                        learning_rate,
+                    ),
                     ClassifierMode::Hybrid => {
-                        let pattern_result = self.train_pattern_fold(&features_array, &labels_array, train_idx, test_idx, learning_rate);
-                        let trading_result = self.train_trading_fold(&features_array, &labels_array, train_idx, test_idx, learning_rate);
+                        let pattern_result = self.train_pattern_fold(
+                            &features_array,
+                            &labels_array,
+                            train_idx,
+                            test_idx,
+                            learning_rate,
+                        );
+                        let trading_result = self.train_trading_fold(
+                            &features_array,
+                            &labels_array,
+                            train_idx,
+                            test_idx,
+                            learning_rate,
+                        );
                         match (pattern_result, trading_result) {
-                            (Ok((p_score, _)), Ok((t_score, _))) => Ok(((p_score + t_score) / 2.0, vec![0.0; self.n_features])),
+                            (Ok((p_score, _)), Ok((t_score, _))) => {
+                                Ok(((p_score + t_score) / 2.0, vec![0.0; self.n_features]))
+                            }
                             (Ok(result), _) | (_, Ok(result)) => Ok(result),
                             (Err(e), _) => Err(e),
                         }
                     }
                 };
-                
+
                 match result {
                     Ok((score, _)) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
                 }
             };
-            
+
             let mut workflow_clone = workflow.clone();
             workflow_clone.execute_validation(n_samples, evaluate_fn)
         } else {
-            Err(PyValueError::new_err("Phase 4 not enabled. Call enable_phase4() first."))
+            Err(PyValueError::new_err("Advanced Cross-Validation not enabled. Call enable_advanced_cross_validation() first."))
         }
     }
-    
+
     fn get_overfitting_analysis(&self) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
-            analysis.insert("is_overfit".to_string(), if pbo_result.is_overfit { 1.0 } else { 0.0 });
-            analysis.insert("statistical_significance".to_string(), pbo_result.statistical_significance as f32);
-            analysis.insert("confidence_lower".to_string(), pbo_result.confidence_interval.0 as f32);
-            analysis.insert("confidence_upper".to_string(), pbo_result.confidence_interval.1 as f32);
-            analysis.insert("n_combinations".to_string(), pbo_result.n_combinations as f32);
+            analysis.insert(
+                "is_overfit".to_string(),
+                if pbo_result.is_overfit { 1.0 } else { 0.0 },
+            );
+            analysis.insert(
+                "statistical_significance".to_string(),
+                pbo_result.statistical_significance as f32,
+            );
+            analysis.insert(
+                "confidence_lower".to_string(),
+                pbo_result.confidence_interval.0 as f32,
+            );
+            analysis.insert(
+                "confidence_upper".to_string(),
+                pbo_result.confidence_interval.1 as f32,
+            );
+            analysis.insert(
+                "n_combinations".to_string(),
+                pbo_result.n_combinations as f32,
+            );
             Ok(Some(analysis))
         } else {
             Ok(None)
         }
     }
-    
+
     fn assess_overfitting_risk(&self) -> String {
         if let Some(pbo_result) = &self.pbo_result {
             match pbo_result.pbo_value {
@@ -1460,7 +1652,7 @@ impl Phase4Capable for UnifiedClassifier {
                 _ => "🟢 LOW: Good generalization expected".to_string(),
             }
         } else {
-            "❓ UNKNOWN: Enable Phase 4 validation for assessment".to_string()
+            "❓ UNKNOWN: Enable Advanced Cross-Validation validation for assessment".to_string()
         }
     }
 }

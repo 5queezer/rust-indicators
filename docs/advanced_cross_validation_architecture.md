@@ -1,8 +1,8 @@
-# Phase 4 Architecture: CombinatorialPurgedCV for Overfitting Detection
+# Advanced Cross-Validation Architecture: CombinatorialPurgedCV for Overfitting Detection
 
 ## Executive Summary
 
-Phase 4 introduces **CombinatorialPurgedCV (CPCV)** - an advanced cross-validation methodology for detecting overfitting in financial machine learning models. This architecture extends the existing ML framework with minimal viable functionality while maintaining backward compatibility and following lean methodology principles.
+Advanced Cross-Validation introduces **CombinatorialPurgedCV (CPCV)** - an advanced cross-validation methodology for detecting overfitting in financial machine learning models. This architecture extends the existing ML framework with minimal viable functionality while maintaining backward compatibility and following lean methodology principles.
 
 ### Core Value Proposition
 - **Overfitting Detection**: Statistical methods to calculate Probability of Backtest Overfitting (PBO)
@@ -16,7 +16,7 @@ Phase 4 introduces **CombinatorialPurgedCV (CPCV)** - an advanced cross-validati
 
 ```mermaid
 graph TB
-    subgraph "Phase 4: CombinatorialPurgedCV"
+    subgraph "Advanced Cross-Validation: CombinatorialPurgedCV"
         CPCV[CombinatorialPurgedCV]
         OD[OverfittingDetection]
         CVQ[CVQuality]
@@ -49,7 +49,7 @@ graph TB
 
 ### Component Architecture
 
-The Phase 4 architecture consists of four primary components:
+The Advanced Cross-Validation architecture consists of four primary components:
 
 1. **CombinatorialPurgedCV**: Core CPCV implementation with N-k group combinations
 2. **OverfittingDetection**: Statistical methods for PBO calculation and validation
@@ -235,7 +235,7 @@ tests/
 └── http_client_tests.rs         # New - HTTP integration testing
 
 examples/
-├── phase4_example.rs            # New - Complete workflow demo
+├── advanced_cross_validation_example.rs            # New - Complete workflow demo
 └── cpcv_analysis.rs             # New - Overfitting analysis demo
 ```
 
@@ -243,7 +243,7 @@ examples/
 
 ### Backward Compatibility
 
-The Phase 4 architecture maintains full backward compatibility:
+The Advanced Cross-Validation architecture maintains full backward compatibility:
 
 ```rust
 // Existing code continues to work unchanged
@@ -258,7 +258,7 @@ let pbo_result = cpcv.calculate_pbo(&cv_results)?;
 
 ### Trait Integration
 
-Phase 4 components integrate seamlessly with existing traits:
+Advanced Cross-Validation components integrate seamlessly with existing traits:
 
 ```rust
 // CombinatorialPurgedCV implements CrossValidator
@@ -279,7 +279,7 @@ impl CrossValidator for CombinatorialPurgedCV {
 
 ### Backend Integration
 
-Phase 4 leverages the existing adaptive backend system:
+Advanced Cross-Validation leverages the existing adaptive backend system:
 
 ```rust
 // Automatic backend selection for computational tasks
@@ -297,7 +297,7 @@ impl CombinatorialPurgedCV {
 
 ## Implementation Phases
 
-### Phase 4.1: Core CombinatorialPurgedCV (Week 1-2)
+### Advanced Cross-Validation.1: Core CombinatorialPurgedCV (Week 1-2)
 
 **Deliverables**:
 - `CombinatorialPurgedCV` struct with basic N-k combinations
@@ -311,7 +311,7 @@ impl CombinatorialPurgedCV {
 - Maintain backward compatibility
 - Pass all existing tests
 
-### Phase 4.2: Enhanced CV Quality (Week 3-4)
+### Advanced Cross-Validation.2: Enhanced CV Quality (Week 3-4)
 
 **Deliverables**:
 - `CVQuality` component with split assessment
@@ -325,7 +325,7 @@ impl CombinatorialPurgedCV {
 - Performance benchmarking
 - Integration tests
 
-### Phase 4.3: HTTP Client Integration (Week 5-6)
+### Advanced Cross-Validation.3: HTTP Client Integration (Week 5-6)
 
 **Deliverables**:
 - `HTTPClient` with async support
@@ -549,7 +549,7 @@ pub struct Phase4Metrics {
 
 **Gradual Adoption**:
 ```rust
-// Phase 1: Drop-in replacement
+// Core Financial Data Structures: Drop-in replacement
 let validator = CombinatorialPurgedCV::from_existing(old_validator);
 
 // Phase 2: Enhanced features
@@ -584,11 +584,11 @@ validator.with_external_validation(http_client);
 
 ## Conclusion
 
-The Phase 4 architecture provides a robust, scalable foundation for advanced cross-validation and overfitting detection in financial machine learning. By following lean methodology principles and maintaining backward compatibility, this design enables immediate value delivery while supporting future enhancements.
+The Advanced Cross-Validation architecture provides a robust, scalable foundation for advanced cross-validation and overfitting detection in financial machine learning. By following lean methodology principles and maintaining backward compatibility, this design enables immediate value delivery while supporting future enhancements.
 
 ### Key Benefits
 
-1. **Immediate Value**: Core CPCV functionality available in Phase 4.1
+1. **Immediate Value**: Core CPCV functionality available in Advanced Cross-Validation.1
 2. **Scalable Design**: Architecture supports future statistical methods
 3. **Backward Compatible**: Existing code continues working unchanged
 4. **Performance Optimized**: Leverages existing backend infrastructure
@@ -596,10 +596,10 @@ The Phase 4 architecture provides a robust, scalable foundation for advanced cro
 
 ### Next Steps
 
-1. Begin Phase 4.1 implementation with core CPCV functionality
+1. Begin Advanced Cross-Validation.1 implementation with core CPCV functionality
 2. Establish CI/CD pipeline for continuous validation
 3. Create initial documentation and examples
-4. Gather user feedback for Phase 4.2 planning
+4. Gather user feedback for Advanced Cross-Validation.2 planning
 5. Plan integration with existing ML workflows
 
-This architecture document serves as the blueprint for implementing Phase 4, ensuring consistent development practices and successful delivery of advanced cross-validation capabilities.
+This architecture document serves as the blueprint for implementing Advanced Cross-Validation, ensuring consistent development practices and successful delivery of advanced cross-validation capabilities.

@@ -1,41 +1,41 @@
 //! Information-driven bar structures for financial data sampling
-//! 
+//!
 //! This module implements López de Prado's advanced bar types from "Advances in Financial Machine Learning"
 //! for information-driven sampling. These bar types sample more frequently when new information arrives
 //! to the market, providing better synchronization with informed trading activity.
-//! 
+//!
 //! # Bar Types
-//! 
+//!
 //! 1. **Time bars**: Sample at fixed time intervals
 //! 2. **Volume bars**: Sample when volume threshold is reached
 //! 3. **Dollar bars**: Sample when dollar volume threshold is reached
 //! 4. **Volume Imbalance bars**: Sample when volume imbalance exceeds expectations
 //! 5. **Tick Imbalance bars**: Sample when tick imbalance exceeds expectations
 //! 6. **Run bars**: Sample when consecutive trades change direction
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```rust
 //! use rust_indicators::financial::bars::{BarBuilder, BarType, Tick};
 //! use time::{OffsetDateTime, Duration};
-//! 
+//!
 //! // Create a volume bar builder with 1000 volume threshold
 //! let mut builder = BarBuilder::new(BarType::Volume { threshold: 1000 });
-//! 
+//!
 //! // Process ticks
 //! let tick = Tick {
 //!     timestamp: OffsetDateTime::now_utc(),
 //!     price: 100.0,
 //!     volume: 500,
 //! };
-//! 
+//!
 //! if let Some(bar) = builder.process_tick(&tick) {
 //!     println!("New bar created: {:?}", bar);
 //! }
 //! ```
 
 use std::collections::VecDeque;
-use time::{OffsetDateTime, Duration};
+use time::{Duration, OffsetDateTime};
 
 /// Bar type enumeration defining the 6 information-driven sampling methods
 #[derive(Debug, Clone, PartialEq)]
@@ -172,7 +172,8 @@ impl ImbalanceTracker {
         }
 
         if !self.volume_history.is_empty() {
-            self.expected_volume_imbalance = self.volume_history.iter().sum::<f64>() / self.volume_history.len() as f64;
+            self.expected_volume_imbalance =
+                self.volume_history.iter().sum::<f64>() / self.volume_history.len() as f64;
         }
     }
 }
@@ -237,12 +238,12 @@ impl BarBuilder {
     pub fn process_tick(&mut self, tick: &Tick) -> Option<Bar> {
         // Calculate tick sign using the tick rule
         let tick_sign = self.calculate_tick_sign(tick);
-        
+
         // Initialize or update current bar
         if self.current_bar.is_none() {
             self.start_new_bar(tick);
         }
-        
+
         // Update current bar with tick
         self.update_current_bar_with_tick(tick, tick_sign);
 
@@ -255,7 +256,7 @@ impl BarBuilder {
     }
 
     /// Calculate tick sign using the tick rule
-    /// 
+    ///
     /// Returns:
     /// - 1 for uptick (price increase)
     /// - -1 for downtick (price decrease)  
@@ -304,7 +305,7 @@ impl BarBuilder {
             bar.high = bar.high.max(tick.price);
             bar.low = bar.low.min(tick.price);
             bar.close = tick.price;
-            
+
             // Update volume and dollar volume
             bar.volume += tick.volume;
             bar.dollar_volume += tick.price * tick.volume as f64;
@@ -323,7 +324,8 @@ impl BarBuilder {
         }
 
         // Update imbalance tracker
-        self.imbalance_tracker.update(tick_sign, tick.volume, tick.price);
+        self.imbalance_tracker
+            .update(tick_sign, tick.volume, tick.price);
 
         // Update run state
         self.update_run_state(tick_sign);
@@ -360,24 +362,16 @@ impl BarBuilder {
     fn should_complete_bar(&self, tick: &Tick, _tick_sign: i8) -> bool {
         if let Some(ref bar) = self.current_bar {
             match &self.bar_type {
-                BarType::Time { frequency } => {
-                    tick.timestamp >= bar.start_time + *frequency
-                }
-                BarType::Volume { threshold } => {
-                    bar.volume >= *threshold
-                }
-                BarType::Dollar { threshold } => {
-                    bar.dollar_volume >= *threshold
-                }
+                BarType::Time { frequency } => tick.timestamp >= bar.start_time + *frequency,
+                BarType::Volume { threshold } => bar.volume >= *threshold,
+                BarType::Dollar { threshold } => bar.dollar_volume >= *threshold,
                 BarType::VolumeImbalance { threshold } => {
                     self.imbalance_tracker.volume_imbalance_exceeded(*threshold)
                 }
                 BarType::TickImbalance { threshold } => {
                     self.imbalance_tracker.tick_imbalance_exceeded(*threshold)
                 }
-                BarType::RunBars { run_length } => {
-                    self.run_state.run_length >= *run_length
-                }
+                BarType::RunBars { run_length } => self.run_state.run_length >= *run_length,
             }
         } else {
             false
@@ -541,7 +535,7 @@ mod tests {
         // Direction change should complete bar when run length >= threshold
         let bar = builder.process_tick(&tick5);
         assert!(bar.is_some());
-        
+
         let bar = bar.unwrap();
         assert_eq!(bar.open, 100.0);
         assert_eq!(bar.close, 102.0); // Close with the direction-changing tick

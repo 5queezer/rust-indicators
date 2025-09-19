@@ -250,11 +250,11 @@
 //! large_batch_predictor = BatchPredictor(base_predictor, batch_size=10000)
 //! ```
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use crate::extract_safe;
 use crate::ml::traits::Predictor;
+use numpy::{PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 /// Confidence-based prediction engine
@@ -300,11 +300,14 @@ impl ConfidencePredictor {
     /// # Parameters
     /// - `weights`: Trained model weights
     /// - `importance`: Feature importance scores
+    #[allow(dead_code)]
     fn set_weights(&mut self, weights: Vec<f32>, importance: Vec<f32>) -> PyResult<()> {
         if weights.len() != importance.len() {
-            return Err(PyValueError::new_err("Weights and importance must have same length"));
+            return Err(PyValueError::new_err(
+                "Weights and importance must have same length",
+            ));
         }
-        
+
         self.model_weights = weights;
         self.feature_importance = importance;
         self.trained = true;
@@ -328,7 +331,8 @@ impl ConfidencePredictor {
             return Err("Feature dimension mismatch".into());
         }
 
-        let weighted_sum = features.iter()
+        let weighted_sum = features
+            .iter()
             .zip(&self.model_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
@@ -354,7 +358,10 @@ impl ConfidencePredictor {
     ///
     /// # Returns
     /// Vector of feature contributions to the prediction
-    fn get_feature_contributions(&self, features: &[f32]) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    fn get_feature_contributions(
+        &self,
+        features: &[f32],
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         if !self.trained {
             return Err("Model not trained".into());
         }
@@ -363,7 +370,8 @@ impl ConfidencePredictor {
             return Err("Feature dimension mismatch".into());
         }
 
-        let contributions: Vec<f32> = features.iter()
+        let contributions: Vec<f32> = features
+            .iter()
             .zip(&self.model_weights)
             .zip(&self.feature_importance)
             .map(|((f, w), i)| f * w * i)
@@ -387,10 +395,11 @@ impl Predictor for ConfidencePredictor {
     ) -> PyResult<(i32, f32)> {
         let features_array = features.as_array();
         let feats = extract_safe!(features_array, "features");
-        
-        let (prediction, confidence) = self.predict_sample(feats)
+
+        let (prediction, confidence) = self
+            .predict_sample(feats)
             .map_err(|e| PyValueError::new_err(format!("Prediction failed: {}", e)))?;
-            
+
         Ok((prediction, confidence))
     }
 
@@ -405,15 +414,16 @@ impl Predictor for ConfidencePredictor {
 
         let features_array = features.as_array();
         let n_samples = features_array.nrows();
-        
+
         let mut predictions = Vec::with_capacity(n_samples);
         let mut confidences = Vec::with_capacity(n_samples);
 
         for i in 0..n_samples {
             let feature_row: Vec<f32> = features_array.row(i).to_vec();
-            let (pred, conf) = self.predict_sample(&feature_row)
-                .map_err(|e| PyValueError::new_err(format!("Batch prediction failed at sample {}: {}", i, e)))?;
-            
+            let (pred, conf) = self.predict_sample(&feature_row).map_err(|e| {
+                PyValueError::new_err(format!("Batch prediction failed at sample {}: {}", i, e))
+            })?;
+
             predictions.push(pred);
             confidences.push(conf);
         }
@@ -431,13 +441,14 @@ impl Predictor for ConfidencePredictor {
     ) -> PyResult<Py<PyArray1<f32>>> {
         let features_array = features.as_array();
         let feats = extract_safe!(features_array, "features");
-        
-        let (prediction, confidence) = self.predict_sample(feats)
+
+        let (prediction, confidence) = self
+            .predict_sample(feats)
             .map_err(|e| PyValueError::new_err(format!("Probability prediction failed: {}", e)))?;
 
         // Convert to class probabilities
         let mut probs = vec![0.0f32; 3]; // [sell, hold, buy]
-        
+
         // Distribute confidence based on prediction
         match prediction {
             0 => probs[0] = confidence, // Sell
@@ -445,11 +456,11 @@ impl Predictor for ConfidencePredictor {
             2 => probs[2] = confidence, // Buy
             _ => return Err(PyValueError::new_err("Invalid prediction class")),
         }
-        
+
         // Normalize remaining probability mass
         let remaining = 1.0 - confidence;
         let other_prob = remaining / 2.0;
-        
+
         for (i, item) in probs.iter_mut().enumerate().take(3) {
             if i != prediction as usize {
                 *item = other_prob;
@@ -466,9 +477,10 @@ impl Predictor for ConfidencePredictor {
     ) -> PyResult<Py<PyArray1<f32>>> {
         let features_array = features.as_array();
         let feats = extract_safe!(features_array, "features");
-        
-        let contributions = self.get_feature_contributions(feats)
-            .map_err(|e| PyValueError::new_err(format!("Feature contribution calculation failed: {}", e)))?;
+
+        let contributions = self.get_feature_contributions(feats).map_err(|e| {
+            PyValueError::new_err(format!("Feature contribution calculation failed: {}", e))
+        })?;
 
         Ok(PyArray1::from_vec(py, contributions).to_owned().into())
     }
@@ -535,19 +547,26 @@ impl BatchPredictor {
     ) -> PyResult<(Py<PyArray1<i32>>, Py<PyArray1<f32>>)> {
         let features_array = features.as_array();
         let n_samples = features_array.nrows();
-        
+
         let mut all_predictions = Vec::with_capacity(n_samples);
         let mut all_confidences = Vec::with_capacity(n_samples);
 
         // Process in batches to manage memory
         for start_idx in (0..n_samples).step_by(self.batch_size) {
             let end_idx = (start_idx + self.batch_size).min(n_samples);
-            
+
             for i in start_idx..end_idx {
                 let feature_row: Vec<f32> = features_array.row(i).to_vec();
-                let (pred, conf) = self.base_predictor.predict_sample(&feature_row)
-                    .map_err(|e| PyValueError::new_err(format!("Batch prediction failed at sample {}: {}", i, e)))?;
-                
+                let (pred, conf) =
+                    self.base_predictor
+                        .predict_sample(&feature_row)
+                        .map_err(|e| {
+                            PyValueError::new_err(format!(
+                                "Batch prediction failed at sample {}: {}",
+                                i, e
+                            ))
+                        })?;
+
                 all_predictions.push(pred);
                 all_confidences.push(conf);
             }
@@ -576,10 +595,7 @@ pub struct PredictionEngine {
 
 impl PredictionEngine {
     /// Create a new prediction engine
-    pub fn new(
-        confidence_predictor: ConfidencePredictor,
-        batch_predictor: BatchPredictor,
-    ) -> Self {
+    pub fn new(confidence_predictor: ConfidencePredictor, batch_predictor: BatchPredictor) -> Self {
         Self {
             confidence_predictor,
             batch_predictor,
@@ -591,7 +607,7 @@ impl PredictionEngine {
     pub fn default() -> Self {
         let confidence_predictor = ConfidencePredictor::default();
         let batch_predictor = BatchPredictor::new(confidence_predictor.clone(), 1000);
-        
+
         Self::new(confidence_predictor, batch_predictor)
     }
 }
@@ -602,11 +618,13 @@ impl PredictionEngine {
     /// # Parameters
     /// - `pattern_name`: Name of the pattern
     /// - `weight`: Weight for the pattern
+    #[allow(dead_code)]
     fn set_pattern_weight(&mut self, pattern_name: String, weight: f32) {
         self.pattern_params.insert(pattern_name, weight);
     }
 
     /// Get pattern weights
+    #[allow(dead_code)]
     fn get_pattern_weights(&self) -> &HashMap<String, f32> {
         &self.pattern_params
     }
@@ -640,7 +658,8 @@ impl Predictor for PredictionEngine {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.confidence_predictor.predict_probabilities(py, features)
+        self.confidence_predictor
+            .predict_probabilities(py, features)
     }
 
     fn get_prediction_explanation<'py>(
@@ -648,12 +667,16 @@ impl Predictor for PredictionEngine {
         py: Python<'py>,
         features: PyReadonlyArray1<'py, f32>,
     ) -> PyResult<Py<PyArray1<f32>>> {
-        self.confidence_predictor.get_prediction_explanation(py, features)
+        self.confidence_predictor
+            .get_prediction_explanation(py, features)
     }
 
     fn set_confidence_threshold_unchecked(&mut self, threshold: f32) {
-        self.confidence_predictor.set_confidence_threshold_unchecked(threshold);
-        self.batch_predictor.base_predictor.set_confidence_threshold_unchecked(threshold);
+        self.confidence_predictor
+            .set_confidence_threshold_unchecked(threshold);
+        self.batch_predictor
+            .base_predictor
+            .set_confidence_threshold_unchecked(threshold);
     }
 
     fn get_confidence_threshold(&self) -> f32 {
@@ -717,7 +740,10 @@ impl MetaLabeler {
     }
 
     /// Set meta-model weights after training
-    pub fn set_meta_weights(&mut self, weights: Vec<f32>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn set_meta_weights(
+        &mut self,
+        weights: Vec<f32>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if weights.len() != self.meta_weights.len() {
             return Err("Meta weights dimension mismatch".into());
         }
@@ -734,49 +760,58 @@ impl MetaLabeler {
     ///
     /// # Returns
     /// Binary decision: 1 (bet) or 0 (no bet)
-    pub fn meta_predict(&self, features: &[f32], volatility: f32) -> Result<i32, Box<dyn std::error::Error>> {
+    pub fn meta_predict(
+        &self,
+        features: &[f32],
+        volatility: f32,
+    ) -> Result<i32, Box<dyn std::error::Error>> {
         // Get primary prediction
         let (primary_pred, primary_conf) = self.primary_predictor.predict_sample(features)?;
-        
+
         // Apply volatility-adjusted threshold
-        let adjusted_threshold = self.primary_threshold * (1.0 + self.volatility_adjustment * volatility);
-        
+        let adjusted_threshold =
+            self.primary_threshold * (1.0 + self.volatility_adjustment * volatility);
+
         // Filter out low-confidence primary predictions
         if primary_conf < adjusted_threshold {
             return Ok(0); // No bet
         }
-        
+
         // If meta-model not trained, use simple threshold filtering
         if !self.meta_trained {
             return Ok(if primary_pred != 1 { 1 } else { 0 }); // Bet on non-hold signals
         }
-        
+
         // Create meta-features: original features + primary prediction + confidence
         let mut meta_features = features.to_vec();
         meta_features.push(primary_pred as f32);
         meta_features.push(primary_conf);
-        
+
         // Meta-model decision
-        let meta_score = meta_features.iter()
+        let meta_score = meta_features
+            .iter()
             .zip(&self.meta_weights)
             .map(|(f, w)| f * w)
             .sum::<f32>();
-        
+
         Ok(if meta_score.tanh() > 0.0 { 1 } else { 0 })
     }
 
     /// Batch meta-labeling
-    pub fn meta_predict_batch(&self, features_batch: &[Vec<f32>], volatility_batch: &[f32])
-        -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    pub fn meta_predict_batch(
+        &self,
+        features_batch: &[Vec<f32>],
+        volatility_batch: &[f32],
+    ) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
         if features_batch.len() != volatility_batch.len() {
             return Err("Features and volatility batch size mismatch".into());
         }
-        
+
         let mut results = Vec::with_capacity(features_batch.len());
         for (features, &volatility) in features_batch.iter().zip(volatility_batch.iter()) {
             results.push(self.meta_predict(features, volatility)?);
         }
-        
+
         Ok(results)
     }
 }
@@ -815,7 +850,7 @@ mod tests {
     fn test_pattern_weights() {
         let mut engine = PredictionEngine::default();
         engine.set_pattern_weight("test_pattern".to_string(), 0.8);
-        
+
         let weights = engine.get_pattern_weights();
         assert_eq!(weights.get("test_pattern"), Some(&0.8));
     }
@@ -824,7 +859,7 @@ mod tests {
     fn test_meta_labeler_creation() {
         let primary = ConfidencePredictor::new(0.6, 5);
         let meta_labeler = MetaLabeler::new(primary, 0.7, 0.1);
-        
+
         assert_eq!(meta_labeler.primary_threshold, 0.7);
         assert_eq!(meta_labeler.volatility_adjustment, 0.1);
         assert!(!meta_labeler.meta_trained);
@@ -834,11 +869,13 @@ mod tests {
     #[test]
     fn test_meta_labeler_untrained_prediction() {
         let mut primary = ConfidencePredictor::new(0.6, 3);
-        primary.set_weights(vec![0.5, -0.3, 0.8], vec![1.0, 1.0, 1.0]).unwrap();
-        
+        primary
+            .set_weights(vec![0.5, -0.3, 0.8], vec![1.0, 1.0, 1.0])
+            .unwrap();
+
         let meta_labeler = MetaLabeler::new(primary, 0.5, 0.0);
         let features = vec![0.2, 0.8, -0.1];
-        
+
         // Should work even without meta-training (uses simple threshold filtering)
         let result = meta_labeler.meta_predict(&features, 0.1);
         assert!(result.is_ok());
@@ -850,16 +887,16 @@ mod tests {
     fn test_meta_labeler_volatility_adjustment() {
         let mut primary = ConfidencePredictor::new(0.6, 2);
         primary.set_weights(vec![1.0, 1.0], vec![1.0, 1.0]).unwrap();
-        
+
         let meta_labeler = MetaLabeler::new(primary, 0.5, 0.2);
         let features = vec![0.3, 0.4]; // Should give moderate confidence
-        
+
         // Low volatility should be more permissive
         let low_vol_result = meta_labeler.meta_predict(&features, 0.1).unwrap();
-        
+
         // High volatility should be more restrictive
         let high_vol_result = meta_labeler.meta_predict(&features, 1.0).unwrap();
-        
+
         // Both should be valid binary outputs
         assert!(low_vol_result == 0 || low_vol_result == 1);
         assert!(high_vol_result == 0 || high_vol_result == 1);
@@ -869,22 +906,18 @@ mod tests {
     fn test_meta_labeler_batch_prediction() {
         let mut primary = ConfidencePredictor::new(0.6, 2);
         primary.set_weights(vec![0.5, 0.5], vec![1.0, 1.0]).unwrap();
-        
+
         let meta_labeler = MetaLabeler::new(primary, 0.4, 0.1);
-        
-        let features_batch = vec![
-            vec![0.1, 0.2],
-            vec![0.8, 0.9],
-            vec![-0.3, 0.1],
-        ];
+
+        let features_batch = vec![vec![0.1, 0.2], vec![0.8, 0.9], vec![-0.3, 0.1]];
         let volatility_batch = vec![0.1, 0.2, 0.15];
-        
+
         let results = meta_labeler.meta_predict_batch(&features_batch, &volatility_batch);
         assert!(results.is_ok());
-        
+
         let decisions = results.unwrap();
         assert_eq!(decisions.len(), 3);
-        
+
         // All decisions should be binary
         for decision in decisions {
             assert!(decision == 0 || decision == 1);
@@ -895,16 +928,16 @@ mod tests {
     fn test_meta_labeler_trained_prediction() {
         let mut primary = ConfidencePredictor::new(0.6, 2);
         primary.set_weights(vec![0.5, 0.5], vec![1.0, 1.0]).unwrap();
-        
+
         let mut meta_labeler = MetaLabeler::new(primary, 0.4, 0.0);
-        
+
         // Train meta-model with some weights
         let meta_weights = vec![0.1, 0.2, 0.3, 0.4]; // 2 features + prediction + confidence
         meta_labeler.set_meta_weights(meta_weights).unwrap();
-        
+
         let features = vec![0.5, 0.3];
         let result = meta_labeler.meta_predict(&features, 0.1);
-        
+
         assert!(result.is_ok());
         let decision = result.unwrap();
         assert!(decision == 0 || decision == 1);

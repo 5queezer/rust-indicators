@@ -1,26 +1,24 @@
-//! # Phase 4 Integration Utilities
+//! # Advanced Cross-Validation Integration Utilities
 //!
-//! This module provides shared utilities and traits for integrating Phase 4 overfitting
+//! This module provides shared utilities and traits for integrating Advanced Cross-Validation overfitting
 //! detection capabilities across all ML models. It eliminates code duplication and provides
-//! a consistent interface for Phase 4 functionality.
+//! a consistent interface for Advanced Cross-Validation functionality.
 //!
 //! ## Key Components
 //!
-//! - [`Phase4Capable`]: Trait for models that support Phase 4 validation
-//! - [`Phase4Config`]: Unified configuration for Phase 4 components
+//! - [`Phase4Capable`]: Trait for models that support Advanced Cross-Validation validation
+//! - [`Phase4Config`]: Unified configuration for Advanced Cross-Validation components
 //! - [`Phase4Workflow`]: Complete workflow implementation
 //! - [`Phase4Results`]: Standardized results structure
 //! - [`Phase4Migration`]: Migration utilities for existing models
 
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
+use crate::ml::components::{CombinatorialPurgedCV, OverfittingDetection, PBOResult};
 use numpy::{PyArray1, PyArray2};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use std::collections::HashMap;
-use crate::ml::components::{
-    CombinatorialPurgedCV, OverfittingDetection, PBOResult,
-};
 
-/// Unified configuration for Phase 4 components
+/// Unified configuration for Advanced Cross-Validation components
 #[derive(Debug, Clone)]
 pub struct Phase4Config {
     /// Embargo percentage for purged cross-validation
@@ -60,7 +58,7 @@ impl Default for Phase4Config {
 }
 
 impl Phase4Config {
-    /// Create a new Phase 4 configuration with default values
+    /// Create a new Advanced Cross-Validation configuration with default values
     pub fn new() -> Self {
         Self::default()
     }
@@ -75,7 +73,7 @@ impl Phase4Config {
         self.n_groups = n_groups.max(3);
         self
     }
-    
+
     /// Create a builder for Phase4Config
     pub fn builder() -> Phase4ConfigBuilder {
         Phase4ConfigBuilder::new()
@@ -99,8 +97,10 @@ impl Phase4Config {
 
     /// Calculate expected number of combinations
     pub fn calculate_n_combinations(&self) -> usize {
-        if self.test_groups > self.n_groups { return 0; }
-        
+        if self.test_groups > self.n_groups {
+            return 0;
+        }
+
         let mut result = 1;
         for i in 0..self.test_groups {
             result = result * (self.n_groups - i) / (i + 1);
@@ -137,32 +137,31 @@ impl Phase4ConfigBuilder {
         }
     }
 
-    
     pub fn embargo_pct(mut self, embargo_pct: f32) -> Self {
         self.embargo_pct = embargo_pct;
         self
     }
-    
+
     pub fn n_groups(mut self, n_groups: usize) -> Self {
         self.n_groups = n_groups;
         self
     }
-    
+
     pub fn test_groups(mut self, test_groups: usize) -> Self {
         self.test_groups = test_groups;
         self
     }
-    
+
     pub fn min_train_size(mut self, min_train_size: usize) -> Self {
         self.min_train_size = min_train_size;
         self
     }
-    
+
     pub fn min_test_size(mut self, min_test_size: usize) -> Self {
         self.min_test_size = min_test_size;
         self
     }
-    
+
     pub fn build(self) -> Phase4Config {
         Phase4Config {
             embargo_pct: self.embargo_pct,
@@ -176,7 +175,6 @@ impl Phase4ConfigBuilder {
             memory_optimization: self.memory_optimization,
         }
     }
-
 
     pub fn significance_level(mut self, significance_level: f64) -> Self {
         self.significance_level = significance_level.clamp(0.001, 0.1);
@@ -197,10 +195,9 @@ impl Phase4ConfigBuilder {
         self.memory_optimization = level.min(2);
         self
     }
-
 }
 
-/// Standardized Phase 4 results structure
+/// Standardized Advanced Cross-Validation results structure
 #[derive(Debug, Clone)]
 pub struct Phase4Results {
     /// Cross-validation performance metrics
@@ -262,33 +259,33 @@ pub enum DegradationSeverity {
     Severe,
 }
 
-/// Trait for models that support Phase 4 validation
+/// Trait for models that support Advanced Cross-Validation validation
 pub trait Phase4Capable {
-    /// Enable Phase 4 validation with given configuration
-    fn enable_phase4(&mut self, config: Phase4Config) -> PyResult<()>;
-    
-    /// Check if Phase 4 is enabled
-    fn is_phase4_enabled(&self) -> bool;
-    
-    /// Get current Phase 4 configuration
-    fn get_phase4_config(&self) -> Option<&Phase4Config>;
-    
-    /// Train with Phase 4 enhanced validation
-    fn train_with_phase4(
+    /// Enable Advanced Cross-Validation validation with given configuration
+    fn enable_advanced_cross_validation(&mut self, config: Phase4Config) -> PyResult<()>;
+
+    /// Check if Advanced Cross-Validation is enabled
+    fn is_advanced_cross_validation_enabled(&self) -> bool;
+
+    /// Get current Advanced Cross-Validation configuration
+    fn get_advanced_cross_validation_config(&self) -> Option<&Phase4Config>;
+
+    /// Train with Advanced Cross-Validation enhanced validation
+    fn train_with_advanced_cross_validation(
         &mut self,
         features: &pyo3::Bound<'_, PyArray2<f32>>,
         labels: &pyo3::Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<Phase4Results>;
-    
+
     /// Get comprehensive overfitting analysis
     fn get_overfitting_analysis(&self) -> PyResult<Option<HashMap<String, f32>>>;
-    
+
     /// Assess overfitting risk with human-readable output
     fn assess_overfitting_risk(&self) -> String;
 }
 
-/// Complete Phase 4 workflow implementation
+/// Complete Advanced Cross-Validation workflow implementation
 #[derive(Clone)]
 pub struct Phase4Workflow {
     pub config: Phase4Config,
@@ -298,7 +295,7 @@ pub struct Phase4Workflow {
 }
 
 impl Phase4Workflow {
-    /// Create a new Phase 4 workflow with given configuration
+    /// Create a new Advanced Cross-Validation workflow with given configuration
     pub fn new(config: Phase4Config) -> Self {
         let combinatorial_cv = CombinatorialPurgedCV::new(
             config.embargo_pct,
@@ -307,14 +304,12 @@ impl Phase4Workflow {
             config.min_train_size,
             config.min_test_size,
         );
-        
-        let overfitting_detector = OverfittingDetection::new(
-            config.significance_level,
-            config.n_bootstrap,
-        );
-        
+
+        let overfitting_detector =
+            OverfittingDetection::new(config.significance_level, config.n_bootstrap);
+
         let memory_tracker = MemoryTracker::new(config.memory_optimization);
-        
+
         Self {
             config,
             combinatorial_cv,
@@ -323,7 +318,7 @@ impl Phase4Workflow {
         }
     }
 
-    /// Execute complete Phase 4 validation workflow
+    /// Execute complete Advanced Cross-Validation validation workflow
     pub fn execute_validation<F>(
         &mut self,
         n_samples: usize,
@@ -336,11 +331,14 @@ impl Phase4Workflow {
         self.memory_tracker.start_tracking();
 
         // Validate configuration
-        self.config.validate(n_samples)
+        self.config
+            .validate(n_samples)
             .map_err(|e| PyValueError::new_err(e))?;
 
         // Generate combinatorial splits
-        let splits = self.combinatorial_cv.create_combinatorial_splits(n_samples)?;
+        let splits = self
+            .combinatorial_cv
+            .create_combinatorial_splits(n_samples)?;
         let n_combinations = splits.len();
 
         // Execute validation across all combinations
@@ -353,7 +351,7 @@ impl Phase4Workflow {
                 Ok((train_score, test_score)) => {
                     cv_scores.push(test_score as f64);
                     train_scores.push(train_score as f64);
-                    
+
                     // Track memory usage
                     self.memory_tracker.record_iteration();
                 }
@@ -370,9 +368,8 @@ impl Phase4Workflow {
         // Calculate performance metrics
         let cv_mean = cv_scores.iter().sum::<f64>() / cv_scores.len() as f64;
         let cv_std = {
-            let variance = cv_scores.iter()
-                .map(|x| (x - cv_mean).powi(2))
-                .sum::<f64>() / cv_scores.len() as f64;
+            let variance = cv_scores.iter().map(|x| (x - cv_mean).powi(2)).sum::<f64>()
+                / cv_scores.len() as f64;
             variance.sqrt()
         };
 
@@ -383,10 +380,16 @@ impl Phase4Workflow {
 
         // Calculate PBO if we have sufficient data
         let pbo_result = if cv_scores.len() >= self.config.n_bootstrap {
-            match self.overfitting_detector.calculate_pbo(&train_scores, &cv_scores) {
+            match self
+                .overfitting_detector
+                .calculate_pbo(&train_scores, &cv_scores)
+            {
                 Ok(pbo) => {
                     cv_metrics.insert("pbo_value".to_string(), pbo.pbo_value as f32);
-                    cv_metrics.insert("is_overfit".to_string(), if pbo.is_overfit { 1.0 } else { 0.0 });
+                    cv_metrics.insert(
+                        "is_overfit".to_string(),
+                        if pbo.is_overfit { 1.0 } else { 0.0 },
+                    );
                     Some(pbo)
                 }
                 Err(e) => {
@@ -421,16 +424,23 @@ impl Phase4Workflow {
     }
 
     /// Analyze performance degradation patterns
-    fn analyze_degradation(&self, train_scores: &[f64], test_scores: &[f64]) -> DegradationAnalysis {
-        let degradations: Vec<f64> = train_scores.iter()
+    fn analyze_degradation(
+        &self,
+        train_scores: &[f64],
+        test_scores: &[f64],
+    ) -> DegradationAnalysis {
+        let degradations: Vec<f64> = train_scores
+            .iter()
             .zip(test_scores.iter())
             .map(|(train, test)| train - test)
             .collect();
 
         let mean_degradation = degradations.iter().sum::<f64>() / degradations.len() as f64;
-        let variance = degradations.iter()
+        let variance = degradations
+            .iter()
             .map(|d| (d - mean_degradation).powi(2))
-            .sum::<f64>() / degradations.len() as f64;
+            .sum::<f64>()
+            / degradations.len() as f64;
         let std_degradation = variance.sqrt();
 
         let degradation_count = degradations.iter().filter(|&&d| d > 0.0).count();
@@ -448,14 +458,20 @@ impl Phase4Workflow {
         let mut recommendations = Vec::new();
         match severity {
             DegradationSeverity::Severe => {
-                recommendations.push("Critical overfitting detected. Reduce model complexity immediately.".to_string());
+                recommendations.push(
+                    "Critical overfitting detected. Reduce model complexity immediately."
+                        .to_string(),
+                );
                 recommendations.push("Consider ensemble methods or regularization.".to_string());
             }
             DegradationSeverity::High => {
-                recommendations.push("Significant overfitting. Add regularization or reduce features.".to_string());
+                recommendations.push(
+                    "Significant overfitting. Add regularization or reduce features.".to_string(),
+                );
             }
             DegradationSeverity::Moderate => {
-                recommendations.push("Moderate overfitting. Monitor performance closely.".to_string());
+                recommendations
+                    .push("Moderate overfitting. Monitor performance closely.".to_string());
             }
             DegradationSeverity::Low => {
                 recommendations.push("Good generalization. Model appears robust.".to_string());
@@ -463,7 +479,8 @@ impl Phase4Workflow {
         }
 
         if degradation_frequency > 0.8 {
-            recommendations.push("High degradation frequency suggests systematic overfitting.".to_string());
+            recommendations
+                .push("High degradation frequency suggests systematic overfitting.".to_string());
         }
 
         DegradationAnalysis {
@@ -552,14 +569,14 @@ impl Phase4Migration {
     ) -> CombinatorialPurgedCV {
         CombinatorialPurgedCV::new(
             embargo_pct,
-            8,  // Default n_groups
-            2,  // Default test_groups
+            8, // Default n_groups
+            2, // Default test_groups
             min_train_size,
             min_test_size,
         )
     }
 
-    /// Create Phase 4 configuration from legacy parameters
+    /// Create Advanced Cross-Validation configuration from legacy parameters
     pub fn create_config_from_legacy(
         embargo_pct: f32,
         n_splits: usize,
@@ -584,7 +601,7 @@ impl Phase4Migration {
         let improvement_factor = n_combinations as f32 / current_cv_splits as f32;
 
         format!(
-            "Phase 4 Migration Report:\n\
+            "Advanced Cross-Validation Migration Report:\n\
             Current CV splits: {}\n\
             Proposed combinations: {}\n\
             Validation improvement: {:.1}x\n\
@@ -594,62 +611,70 @@ impl Phase4Migration {
             current_cv_splits,
             n_combinations,
             improvement_factor,
-            if n_combinations >= 10 { "High" } else { "Medium" },
+            if n_combinations >= 10 {
+                "High"
+            } else {
+                "Medium"
+            },
             match proposed_config.memory_optimization {
                 0 => "None",
                 1 => "Basic",
                 2 => "Aggressive",
                 _ => "Unknown",
             },
-            if improvement_factor > 2.0 { "Yes - significant improvement" } else { "Consider for robustness" }
+            if improvement_factor > 2.0 {
+                "Yes - significant improvement"
+            } else {
+                "Consider for robustness"
+            }
         )
     }
 }
 
-/// Convenience functions for common Phase 4 operations
+/// Convenience functions for common Advanced Cross-Validation operations
 pub mod convenience {
     use super::*;
 
-    /// Create a Phase 4 workflow with sensible defaults for pattern recognition
+    /// Create a Advanced Cross-Validation workflow with sensible defaults for pattern recognition
     pub fn create_pattern_workflow() -> Phase4Workflow {
         let config = Phase4Config::builder()
-            .embargo_pct(0.01)  // Lower embargo for patterns
+            .embargo_pct(0.01) // Lower embargo for patterns
             .n_groups(6)
             .test_groups(2)
             .min_train_size(80)
             .min_test_size(15)
             .build();
-        
+
         Phase4Workflow::new(config)
     }
 
-    /// Create a Phase 4 workflow with sensible defaults for trading classification
+    /// Create a Advanced Cross-Validation workflow with sensible defaults for trading classification
     pub fn create_trading_workflow() -> Phase4Workflow {
         let config = Phase4Config::builder()
-            .embargo_pct(0.02)  // Higher embargo for trading
+            .embargo_pct(0.02) // Higher embargo for trading
             .n_groups(8)
             .test_groups(2)
             .min_train_size(100)
             .min_test_size(20)
             .build();
-        
+
         Phase4Workflow::new(config)
     }
 
-    /// Create a Phase 4 workflow with sensible defaults for unified models
+    /// Create a Advanced Cross-Validation workflow with sensible defaults for unified models
     pub fn create_unified_workflow() -> Phase4Workflow {
         let config = Phase4Config::builder()
             .embargo_pct(0.015) // Balanced embargo
             .n_groups(10)
-            .test_groups(3)     // More test groups for comprehensive validation
+            .test_groups(3) // More test groups for comprehensive validation
             .min_train_size(120)
             .min_test_size(25)
             .build();
-        
+
         Phase4Workflow::new(config)
     }
 
-    /// Quick Phase 4 setup for existing models
+    /// Quick Advanced Cross-Validation setup for existing models
     pub fn quick_setup(
         n_samples: usize,
         model_type: &str,
@@ -661,7 +686,8 @@ pub mod convenience {
             _ => Phase4Config::default(),
         };
 
-        config.validate(n_samples)
+        config
+            .validate(n_samples)
             .map_err(|e| PyValueError::new_err(e))?;
 
         let combinatorial_cv = CombinatorialPurgedCV::new(
@@ -672,10 +698,8 @@ pub mod convenience {
             config.min_test_size,
         );
 
-        let overfitting_detector = OverfittingDetection::new(
-            config.significance_level,
-            config.n_bootstrap,
-        );
+        let overfitting_detector =
+            OverfittingDetection::new(config.significance_level, config.n_bootstrap);
 
         Ok((config, combinatorial_cv, overfitting_detector))
     }
@@ -694,7 +718,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_phase4_config_validation() {
+    fn test_advanced_cross_validation_config_validation() {
         let config = Phase4Config::builder()
             .n_groups(5)
             .test_groups(2)
@@ -707,11 +731,8 @@ mod tests {
     }
 
     #[test]
-    fn test_phase4_config_combinations() {
-        let config = Phase4Config::builder()
-            .n_groups(5)
-            .test_groups(2)
-            .build();
+    fn test_advanced_cross_validation_config_combinations() {
+        let config = Phase4Config::builder().n_groups(5).test_groups(2).build();
 
         assert_eq!(config.calculate_n_combinations(), 10); // C(5,2) = 10
     }
