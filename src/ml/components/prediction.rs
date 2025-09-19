@@ -13,20 +13,19 @@
 //!
 //! ## Architecture
 //!
-//! ```text
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │                  PredictionEngine                           │
-//! ├─────────────────────────────────────────────────────────────┤
-//! │  ConfidencePredictor    │    BatchPredictor                 │
-//! │  • Single predictions   │    • Large dataset processing     │
-//! │  • Confidence scoring   │    • Memory-efficient batching    │
-//! │  • Feature attribution  │    • Parallel processing ready    │
-//! ├─────────────────────────────────────────────────────────────┤
-//! │                 Core Algorithms                             │
-//! │  • Linear combination   • Tanh activation                   │
-//! │  • Confidence estimation • Feature contributions            │
-//! └─────────────────────────────────────────────────────────────┘
-//! ```
+//! ### PredictionEngine
+//!
+//! | ConfidencePredictor              | BatchPredictor                   |
+//! |----------------------------------|----------------------------------|
+//! | • Single predictions             | • Large dataset processing       |
+//! | • Confidence scoring             | • Memory-efficient batching      |
+//! | • Feature attribution            | • Parallel processing ready      |
+//!
+//! ### Core Algorithms
+//!
+//! | • Linear combination             | • Tanh activation                |
+//! |----------------------------------|----------------------------------|
+//! | • Confidence estimation          | • Feature contributions          |
 //!
 //! ## Key Features
 //!
@@ -293,13 +292,15 @@ impl ConfidencePredictor {
     pub fn default() -> Self {
         Self::new(0.6, 10)
     }
+}
 
+impl ConfidencePredictor {
     /// Set model weights after training
     ///
     /// # Parameters
     /// - `weights`: Trained model weights
     /// - `importance`: Feature importance scores
-    pub fn set_weights(&mut self, weights: Vec<f32>, importance: Vec<f32>) -> PyResult<()> {
+    fn set_weights(&mut self, weights: Vec<f32>, importance: Vec<f32>) -> PyResult<()> {
         if weights.len() != importance.len() {
             return Err(PyValueError::new_err("Weights and importance must have same length"));
         }
@@ -318,7 +319,7 @@ impl ConfidencePredictor {
     /// 3. Calculate confidence as absolute value
     /// 4. Apply threshold filtering
     /// 5. Map to class prediction (0=sell, 1=hold, 2=buy)
-    pub fn predict_sample(&self, features: &[f32]) -> Result<(i32, f32), Box<dyn std::error::Error>> {
+    fn predict_sample(&self, features: &[f32]) -> Result<(i32, f32), Box<dyn std::error::Error>> {
         if !self.trained {
             return Err("Model not trained".into());
         }
@@ -353,7 +354,7 @@ impl ConfidencePredictor {
     ///
     /// # Returns
     /// Vector of feature contributions to the prediction
-    pub fn get_feature_contributions(&self, features: &[f32]) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    fn get_feature_contributions(&self, features: &[f32]) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         if !self.trained {
             return Err("Model not trained".into());
         }
@@ -369,6 +370,12 @@ impl ConfidencePredictor {
             .collect();
 
         Ok(contributions)
+    }
+}
+
+impl Default for ConfidencePredictor {
+    fn default() -> Self {
+        Self::default()
     }
 }
 
@@ -443,9 +450,9 @@ impl Predictor for ConfidencePredictor {
         let remaining = 1.0 - confidence;
         let other_prob = remaining / 2.0;
         
-        for i in 0..3 {
+        for (i, item) in probs.iter_mut().enumerate().take(3) {
             if i != prediction as usize {
-                probs[i] = other_prob;
+                *item = other_prob;
             }
         }
 
@@ -504,7 +511,15 @@ impl BatchPredictor {
     pub fn default() -> Self {
         Self::new(ConfidencePredictor::default(), 1000)
     }
+}
 
+impl Default for BatchPredictor {
+    fn default() -> Self {
+        Self::default()
+    }
+}
+
+impl BatchPredictor {
     /// Process large datasets in batches
     ///
     /// # Parameters
@@ -579,19 +594,27 @@ impl PredictionEngine {
         
         Self::new(confidence_predictor, batch_predictor)
     }
+}
 
+impl PredictionEngine {
     /// Set pattern-specific parameters
     ///
     /// # Parameters
     /// - `pattern_name`: Name of the pattern
     /// - `weight`: Weight for the pattern
-    pub fn set_pattern_weight(&mut self, pattern_name: String, weight: f32) {
+    fn set_pattern_weight(&mut self, pattern_name: String, weight: f32) {
         self.pattern_params.insert(pattern_name, weight);
     }
 
     /// Get pattern weights
-    pub fn get_pattern_weights(&self) -> &HashMap<String, f32> {
+    fn get_pattern_weights(&self) -> &HashMap<String, f32> {
         &self.pattern_params
+    }
+}
+
+impl Default for PredictionEngine {
+    fn default() -> Self {
+        Self::default()
     }
 }
 

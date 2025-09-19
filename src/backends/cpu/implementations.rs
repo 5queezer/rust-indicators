@@ -1,5 +1,6 @@
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
+use crate::indicators::api::{BollingerBandsOutput, HilbertTransformOutput};
 use std::f64::consts::PI;
 
 pub fn rsi_cpu<'py>(
@@ -74,11 +75,11 @@ pub fn sma_cpu<'py>(
     if period == 0 {
         return Ok(PyArray1::from_vec(py, results).to_owned().into());
     }
-    for i in 0..len {
+    for (i, item) in results.iter_mut().enumerate().take(len) {
         if i + 1 >= period {
             let start_idx = i + 1 - period;
             let sum: f64 = (start_idx..=i).map(|j| values[j]).sum();
-            results[i] = sum / period as f64;
+            *item = sum / period as f64;
         }
     }
     Ok(PyArray1::from_vec(py, results).to_owned().into())
@@ -89,18 +90,18 @@ pub fn bollinger_bands_cpu<'py>(
     prices: PyReadonlyArray1<f64>,
     period: usize,
     std_dev: f64,
-) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+) -> PyResult<BollingerBandsOutput> {
     let prices = prices.as_array();
     let len = prices.len();
-    let mut upper = vec![f64::NAN; len];
-    let mut middle = vec![f64::NAN; len];
-    let mut lower = vec![f64::NAN; len];
+    let mut upper_vec = vec![f64::NAN; len];
+    let mut middle_vec = vec![f64::NAN; len];
+    let mut lower_vec = vec![f64::NAN; len];
     if period == 0 {
-        return Ok((
-            PyArray1::from_vec(py, upper).to_owned().into(),
-            PyArray1::from_vec(py, middle).to_owned().into(),
-            PyArray1::from_vec(py, lower).to_owned().into(),
-        ));
+        return Ok(BollingerBandsOutput {
+            upper: PyArray1::from_vec(py, upper_vec).to_owned().into(),
+            middle: PyArray1::from_vec(py, middle_vec).to_owned().into(),
+            lower: PyArray1::from_vec(py, lower_vec).to_owned().into(),
+        });
     }
     for i in 0..len {
         if i + 1 >= period {
@@ -110,16 +111,16 @@ pub fn bollinger_bands_cpu<'py>(
             let variance: f64 =
                 window.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / period as f64;
             let std = variance.sqrt();
-            upper[i] = mean + std_dev * std;
-            middle[i] = mean;
-            lower[i] = mean - std_dev * std;
+            upper_vec[i] = mean + std_dev * std;
+            middle_vec[i] = mean;
+            lower_vec[i] = mean - std_dev * std;
         }
     }
-    Ok((
-        PyArray1::from_vec(py, upper).to_owned().into(),
-        PyArray1::from_vec(py, middle).to_owned().into(),
-        PyArray1::from_vec(py, lower).to_owned().into(),
-    ))
+    Ok(BollingerBandsOutput {
+        upper: PyArray1::from_vec(py, upper_vec).to_owned().into(),
+        middle: PyArray1::from_vec(py, middle_vec).to_owned().into(),
+        lower: PyArray1::from_vec(py, lower_vec).to_owned().into(),
+    })
 }
 
 pub fn atr_cpu<'py>(
@@ -437,7 +438,7 @@ pub fn hilbert_transform_cpu<'py>(
     py: Python<'py>,
     data: PyReadonlyArray1<'py, f64>,
     lp_period: usize,
-) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+) -> PyResult<HilbertTransformOutput> {
     let data_array = data.as_array();
     let data_slice = data_array.as_slice().ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err(
@@ -447,10 +448,8 @@ pub fn hilbert_transform_cpu<'py>(
 
     let (real_component, imaginary_component) = hilbert_transform_core(data_slice, lp_period);
 
-    Ok((
-        PyArray1::from_vec(py, real_component).to_owned().into(),
-        PyArray1::from_vec(py, imaginary_component)
-            .to_owned()
-            .into(),
-    ))
+    Ok(HilbertTransformOutput {
+        real: PyArray1::from_vec(py, real_component).to_owned().into(),
+        imag: PyArray1::from_vec(py, imaginary_component).to_owned().into(),
+    })
 }

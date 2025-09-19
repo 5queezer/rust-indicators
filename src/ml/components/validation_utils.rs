@@ -5,7 +5,7 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, ndarray};
+use numpy::ndarray;
 use std::collections::HashMap;
 
 use crate::ml::components::phase4_integration::{Phase4Results, Phase4Workflow};

@@ -6,10 +6,8 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use rayon::prelude::*;
 use statrs::distribution::{Normal, ContinuousCDF};
-use std::collections::HashMap;
-use crate::ml::components::cross_validation::{CVMetrics, OverfittingMetrics};
+use crate::ml::components::cross_validation::CVMetrics;
 
 /// Overfitting detection implementation with statistical methods
 ///
@@ -127,7 +125,16 @@ impl OverfittingDetection {
     pub fn default() -> Self {
         Self::new(0.05, 10)
     }
+}
 
+impl Default for OverfittingDetection {
+    fn default() -> Self {
+        Self::default()
+    }
+
+}
+
+impl OverfittingDetection {
     /// Calculate Probability of Backtest Overfitting (PBO)
     ///
     /// Implements López de Prado's PBO methodology with enhanced statistical analysis.
@@ -175,7 +182,7 @@ impl OverfittingDetection {
     }
 
     /// Core PBO calculation using López de Prado's formula
-    fn calculate_pbo_core(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<f64> {
+    pub fn calculate_pbo_core(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<f64> {
         let _n = in_sample.len();
         
         // Calculate actual medians first
@@ -210,7 +217,7 @@ impl OverfittingDetection {
             
             let base_pbo = count as f64 / reduced_samples as f64;
             // Ensure minimum PBO when there's clear overfitting
-            let pbo = (base_pbo + performance_gap * 0.5).min(1.0).max(0.1);
+            let pbo = (base_pbo + performance_gap * 0.5).clamp(0.1, 1.0);
             Ok(pbo)
         } else {
             // If out-of-sample is already better or equal, low overfitting probability
@@ -219,7 +226,7 @@ impl OverfittingDetection {
     }
 
     /// Calculate confidence interval for PBO estimate
-    fn calculate_pbo_confidence_interval(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<(f64, f64)> {
+    pub fn calculate_pbo_confidence_interval(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<(f64, f64)> {
         let mut pbo_estimates = Vec::new();
 
         // Generate bootstrap PBO estimates
@@ -244,7 +251,7 @@ impl OverfittingDetection {
     }
 
     /// Calculate statistical significance using Mann-Whitney U test
-    fn calculate_statistical_significance(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<f64> {
+    pub fn calculate_statistical_significance(&self, in_sample: &[f64], out_sample: &[f64]) -> PyResult<f64> {
         // Simplified Mann-Whitney U test implementation
         let n1 = in_sample.len() as f64;
         let n2 = out_sample.len() as f64;
@@ -284,7 +291,7 @@ impl OverfittingDetection {
         let normal = Normal::new(0.0, 1.0).unwrap();
         let p_value = 2.0 * (1.0 - normal.cdf(z.abs()));
         
-        Ok(p_value.min(1.0).max(0.0))
+        Ok(p_value.clamp(0.0, 1.0))
     }
 
     /// Detect overfitting with comprehensive analysis
@@ -328,7 +335,7 @@ impl OverfittingDetection {
     }
 
     /// Calculate comprehensive performance statistics
-    fn calculate_performance_stats(&self, performances: &[f64]) -> PerformanceStats {
+    pub fn calculate_performance_stats(&self, performances: &[f64]) -> PerformanceStats {
         let n = performances.len() as f64;
         let mean = performances.iter().sum::<f64>() / n;
         
@@ -394,7 +401,7 @@ impl OverfittingDetection {
         } else {
             DegradationSeverity::Low
         };
-
+        
         DegradationAnalysis {
             mean_degradation,
             std_degradation,
@@ -404,7 +411,7 @@ impl OverfittingDetection {
     }
 
     /// Generate recommendations based on analysis
-    fn generate_recommendations(&self, pbo_result: &PBOResult, degradation: &DegradationAnalysis) -> Vec<String> {
+    pub fn generate_recommendations(&self, pbo_result: &PBOResult, degradation: &DegradationAnalysis) -> Vec<String> {
         let mut recommendations = Vec::new();
         
         if pbo_result.is_overfit {
@@ -442,7 +449,7 @@ impl OverfittingDetection {
     }
 
     /// Bootstrap sample from given data
-    fn bootstrap_sample(&self, data: &[f64]) -> Vec<f64> {
+    pub fn bootstrap_sample(&self, data: &[f64]) -> Vec<f64> {
         use rand::prelude::*;
         let mut rng = thread_rng();
         let mut sample = Vec::with_capacity(data.len());
@@ -456,7 +463,7 @@ impl OverfittingDetection {
     }
 
     /// Calculate median of a dataset
-    fn calculate_median(&self, data: &[f64]) -> f64 {
+    pub fn calculate_median(&self, data: &[f64]) -> f64 {
         let mut sorted = data.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         

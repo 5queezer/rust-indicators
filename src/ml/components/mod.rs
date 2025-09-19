@@ -46,7 +46,9 @@ pub use cross_validation::{
     PatternAwareCrossValidator,
     CombinatorialPurgedCV,
     CVMetrics,
-    OverfittingMetrics
+    OverfittingMetrics,
+    CombinatorialSplitsOutput,
+    CVSplitsOutput
 };
 pub use sample_weighting::{VolatilityWeighting, PatternWeighting, SampleWeightCalculator};
 pub use label_generation::{TradingSide, TripleBarrierLabeler, PatternLabeler, ComponentLabelGenerator};
@@ -83,6 +85,9 @@ pub struct Phase4Config {
     pub significance_level: f64,
     pub n_bootstrap: usize,
 }
+
+/// Type alias for the return type of setup_phase4_for_model
+pub type Phase4SetupOutput = (CombinatorialPurgedCV, OverfittingDetection, CombinatorialSplitsOutput);
 
 impl Default for Phase4Config {
     fn default() -> Self {
@@ -172,7 +177,7 @@ impl Phase4Validator {
     }
 
     /// Create combinatorial splits for the given sample size
-    pub fn create_splits(&self, n_samples: usize) -> PyResult<Vec<(Vec<usize>, Vec<usize>, usize)>> {
+    pub fn create_splits(&self, n_samples: usize) -> PyResult<CombinatorialSplitsOutput> {
         self.combinatorial_cv.create_combinatorial_splits(n_samples)
     }
 
@@ -230,7 +235,7 @@ pub fn migrate_to_combinatorial_cv(
 pub fn setup_phase4_for_model(
     n_samples: usize,
     config: Option<Phase4Config>,
-) -> PyResult<(CombinatorialPurgedCV, OverfittingDetection, Vec<(Vec<usize>, Vec<usize>, usize)>)> {
+) -> PyResult<Phase4SetupOutput> {
     let config = config.unwrap_or_default();
     
     let combinatorial_cv = CombinatorialPurgedCV::new(

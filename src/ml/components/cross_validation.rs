@@ -178,7 +178,10 @@ impl PatternAwareCrossValidator {
     pub fn default() -> Self {
         Self::new(0.01, 5)
     }
+}
 
+
+impl PatternAwareCrossValidator {
     /// Create pattern-aware CV splits with default pattern duration
     ///
     /// # Parameters
@@ -310,6 +313,12 @@ pub struct CVMetrics {
     pub combination_id: usize,
 }
 
+/// Type alias for the return type of create_combinatorial_splits
+pub type CombinatorialSplitsOutput = Vec<(Vec<usize>, Vec<usize>, usize)>;
+
+/// Type alias for the return type of create_purged_cv_splits and create_pattern_aware_cv_splits
+pub type CVSplitsOutput = Vec<(Vec<usize>, Vec<usize>)>;
+
 /// Overfitting detection metrics
 #[derive(Debug, Clone)]
 pub struct OverfittingMetrics {
@@ -364,14 +373,15 @@ impl CombinatorialPurgedCV {
     pub fn default() -> Self {
         Self::new(0.01, 10, 2, 50, 10)
     }
+}
 
+
+impl CombinatorialPurgedCV {
     /// Generate all C(N,k) combinations of test groups
     ///
     /// # Returns
     /// Vector of combinations, where each combination is a vector of group indices
     pub fn generate_combinations(&self) -> Vec<Vec<usize>> {
-        use rayon::prelude::*;
-        
         let groups: Vec<usize> = (0..self.n_groups).collect();
         let mut combinations = Vec::new();
         
@@ -412,7 +422,7 @@ impl CombinatorialPurgedCV {
     pub fn create_combinatorial_splits(
         &self,
         n_samples: usize,
-    ) -> PyResult<Vec<(Vec<usize>, Vec<usize>, usize)>> {
+    ) -> PyResult<CombinatorialSplitsOutput> {
         if n_samples < self.n_groups {
             return Err(PyValueError::new_err("Not enough samples for groups"));
         }
@@ -511,7 +521,7 @@ impl CombinatorialPurgedCV {
         let confidence_interval = self.calculate_pbo_confidence_interval(performance_scores, 0.95);
 
         OverfittingMetrics {
-            pbo: pbo.min(1.0).max(0.0), // Clamp to [0, 1]
+            pbo: pbo.clamp(0.0, 1.0), // Clamp to [0, 1]
             performance_distribution: performance_scores.to_vec(),
             confidence_interval,
             n_combinations,
@@ -541,11 +551,11 @@ impl CombinatorialPurgedCV {
             // Calculate PBO for bootstrap sample
             let k = bootstrap_scores.len() as f64;
             let pbo = if k > 0.0 {
-                1.0 - (1.0 - (-k).exp()).powf(k / k) // Simplified for bootstrap
+                1.0 - (1.0 - (-k).exp()).powf(1.0) // Simplified for bootstrap
             } else {
                 1.0
             };
-            bootstrap_pbos.push(pbo.min(1.0).max(0.0));
+            bootstrap_pbos.push(pbo.clamp(0.0, 1.0));
         }
 
         // Calculate confidence interval

@@ -7,6 +7,12 @@
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 
+/// Type alias for the return type of bollinger_bands
+pub type BollingerBandsOutput = crate::indicators::api::BollingerBandsOutput;
+
+/// Type alias for the return type of hilbert_transform
+pub type HilbertTransformOutput = crate::indicators::api::HilbertTransformOutput;
+
 /// Core trait for technical indicator computation backends
 ///
 /// This trait defines the interface that all indicator backends must implement.
@@ -153,7 +159,7 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         prices: PyReadonlyArray1<'py, f64>,
         period: usize,
         std_dev: f64,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
+    ) -> PyResult<BollingerBandsOutput>;
 
     /// Calculate Average True Range (ATR)
     ///
@@ -337,5 +343,5 @@ pub trait IndicatorsBackend: Send + Sync + 'static {
         py: Python<'py>,
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>;
+    ) -> PyResult<HilbertTransformOutput>;
 }

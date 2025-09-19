@@ -296,7 +296,7 @@ impl StationarityTests {
         let y_target = dy.slice(s![lags..]).to_owned();
         
         match Self::ols_regression(&x, &y_target) {
-            Ok((beta, residuals)) => {
+            Ok((_beta, residuals)) => {
                 let sse = residuals.dot(&residuals);
                 let log_likelihood = -0.5 * n_obs as f64 * (1.0 + (2.0 * PI * sse / n_obs as f64).ln());
                 let aic = -2.0 * log_likelihood + 2.0 * n_vars as f64;

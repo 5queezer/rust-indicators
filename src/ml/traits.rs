@@ -9,6 +9,9 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use std::collections::HashMap;
 
+/// Type alias for the return type of predict_batch
+pub type BatchPredictionOutput = (Py<PyArray1<i32>>, Py<PyArray1<f32>>);
+
 /// Core trait for machine learning computation backends
 ///
 /// This trait defines the interface that all ML backends must implement.
@@ -279,13 +282,8 @@ pub trait LabelGenerator: Send + Sync + 'static {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: usize,
-        profit_threshold: f32,
-        stop_threshold: f32,
+        ohlc_data: OHLCData<'py>,
+        params: PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>>;
 
     /// Calculate sample weights
@@ -552,7 +550,7 @@ pub trait Predictor: Send + Sync + 'static {
         &self,
         py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
-    ) -> PyResult<(Py<PyArray1<i32>>, Py<PyArray1<f32>>)>;
+    ) -> PyResult<BatchPredictionOutput>;
 
     /// Get prediction probabilities
     ///
@@ -688,3 +686,20 @@ pub trait UnifiedMLBackend: MLBackend + LabelGenerator + CrossValidator + Predic
 
 // Blanket implementation for any type that implements all four traits
 impl<T> UnifiedMLBackend for T where T: MLBackend + LabelGenerator + CrossValidator + Predictor {}
+
+/// Struct to encapsulate OHLC price data for pattern labeling.
+#[derive(Debug, Clone)]
+pub struct OHLCData<'py> {
+    pub open_prices: PyReadonlyArray1<'py, f32>,
+    pub high_prices: PyReadonlyArray1<'py, f32>,
+    pub low_prices: PyReadonlyArray1<'py, f32>,
+    pub close_prices: PyReadonlyArray1<'py, f32>,
+}
+
+/// Struct to encapsulate parameters for pattern-based label generation.
+#[derive(Debug, Clone, Copy)]
+pub struct PatternLabelingParams {
+    pub future_periods: usize,
+    pub profit_threshold: f32,
+    pub stop_threshold: f32,
+}

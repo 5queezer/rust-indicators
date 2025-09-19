@@ -238,7 +238,7 @@ use crate::extract_safe;
 use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
     PatternLabeler, PatternWeighting, PatternAwareCrossValidator, PredictionEngine,
-    CombinatorialPurgedCV, OverfittingDetection, PBOResult,
+    PBOResult,
     phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
 };
 
@@ -518,7 +518,7 @@ impl PatternClassifier {
             let workflow = self.phase4_workflow.as_ref().unwrap();
             
             // Define evaluation function for the workflow
-            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+            let evaluate_fn = |_train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
                 match self.evaluate_fold_with_indices(&pattern_array, &y_array, test_idx) {
                     Ok(score) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),
@@ -614,7 +614,7 @@ impl PatternClassifier {
     }
 
     /// Get Phase 4 overfitting analysis results
-    fn get_overfitting_analysis(&self, py: Python) -> PyResult<Option<HashMap<String, f32>>> {
+    fn get_overfitting_analysis(&self, _py: Python) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
@@ -813,18 +813,10 @@ impl LabelGenerator for PatternClassifier {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: usize,
-        profit_threshold: f32,
-        stop_threshold: f32,
+        ohlc_data: crate::ml::traits::OHLCData<'py>,
+        params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(
-            py, open_prices, high_prices, low_prices, close_prices,
-            future_periods, profit_threshold, stop_threshold
-        )
+        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(
@@ -928,7 +920,7 @@ impl Phase4Capable for PatternClassifier {
         &mut self,
         features: &pyo3::Bound<'_, PyArray2<f32>>,
         labels: &pyo3::Bound<'_, PyArray1<i32>>,
-        learning_rate: f32,
+        _learning_rate: f32,
     ) -> PyResult<Phase4Results> {
         let features = features.readonly();
         let labels = labels.readonly();
@@ -937,7 +929,7 @@ impl Phase4Capable for PatternClassifier {
         let (n_samples, _) = features_array.dim();
         
         if let Some(workflow) = &self.phase4_workflow {
-            let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
+            let evaluate_fn = |_train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
                 match self.evaluate_fold_with_indices(&features_array, &labels_array, test_idx) {
                     Ok(score) => Ok((score, score)), // Return (train_score, test_score)
                     Err(e) => Err(e),

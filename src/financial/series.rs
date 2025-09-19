@@ -175,7 +175,7 @@ impl FinancialSeries {
     ///     println!("Window mean: {}", mean);
     /// }
     /// ```
-    pub fn rolling_window(&self, window: usize) -> impl Iterator<Item = ArrayView1<f64>> + '_ {
+    pub fn rolling_window(&self, window: usize) -> impl Iterator<Item = ArrayView1<'_, f64>> + '_ {
         (0..=self.values.len().saturating_sub(window))
             .map(move |i| self.values.slice(s![i..i + window]))
     }
@@ -305,7 +305,7 @@ impl FinancialSeries {
     /// # Returns
     /// 
     /// ArrayView1 of values in the specified range
-    pub fn slice_by_time(&self, start: OffsetDateTime, end: OffsetDateTime) -> Option<ArrayView1<f64>> {
+    pub fn slice_by_time(&self, start: OffsetDateTime, end: OffsetDateTime) -> Option<ArrayView1<'_, f64>> {
         let start_idx = self.index.get(&start)?;
         let end_idx = self.index.get(&end)?;
         

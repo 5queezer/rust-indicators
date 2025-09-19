@@ -339,7 +339,16 @@ impl IndicatorsBackend for PartialGpuBackend {
     gpu_method!(rsi, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(ema, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(sma, (values: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
-    gpu_method!(bollinger_bands, (prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)>);
+    fn bollinger_bands<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+        std_dev: f64,
+    ) -> PyResult<crate::indicators::api::BollingerBandsOutput> {
+        let result = self.cpu_backend.bollinger_bands(py, prices, period, std_dev)?;
+        Ok(result)
+    }
     gpu_method!(atr, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(williams_r, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     gpu_method!(cci, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
@@ -465,7 +474,7 @@ impl IndicatorsBackend for PartialGpuBackend {
         py: Python<'py>,
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+    ) -> PyResult<crate::indicators::api::HilbertTransformOutput> {
         #[cfg(any(feature = "cuda", all(feature = "gpu", not(feature = "cuda"))))]
         {
             let data_array = data.as_array();
@@ -486,10 +495,10 @@ impl IndicatorsBackend for PartialGpuBackend {
                 }
             };
 
-            Ok((
-                PyArray1::from_vec(py, real_vec).to_owned().into(),
-                PyArray1::from_vec(py, imag_vec).to_owned().into(),
-            ))
+            Ok(crate::indicators::api::HilbertTransformOutput {
+                real: PyArray1::from_vec(py, real_vec).to_owned().into(),
+                imag: PyArray1::from_vec(py, imag_vec).to_owned().into(),
+            })
         }
         #[cfg(not(feature = "gpu"))]
         {

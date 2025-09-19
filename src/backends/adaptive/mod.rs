@@ -262,17 +262,21 @@ impl IndicatorsBackend for AdaptiveBackend {
         prices: PyReadonlyArray1<'py, f64>,
         period: usize,
         std_dev: f64,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-        delegate_indicator!(
-            self,
-            py,
-            "bollinger_bands",
-            IndicatorParams::BollingerBands {
-                data_size: prices.as_array().len(),
-                period
-            },
-            bollinger_bands(prices, period, std_dev)
-        )
+    ) -> PyResult<crate::indicators::api::BollingerBandsOutput> {
+        let params = IndicatorParams::BollingerBands {
+            data_size: prices.as_array().len(),
+            period,
+        };
+
+        if self.should_use_gpu("bollinger_bands", &params) {
+            if let Some(ref gpu_backend) = self.gpu_backend {
+                let result = gpu_backend.bollinger_bands(py, prices, period, std_dev)?;
+                return Ok(result);
+            }
+        }
+
+        let result = self.cpu_backend.bollinger_bands(py, prices, period, std_dev)?;
+        Ok(result)
     }
 
     fn atr<'py>(
@@ -377,7 +381,7 @@ impl IndicatorsBackend for AdaptiveBackend {
         py: Python<'py>,
         data: PyReadonlyArray1<'py, f64>,
         lp_period: usize,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
+    ) -> PyResult<crate::indicators::api::HilbertTransformOutput> {
         let data_len = data.as_array().len();
 
         // Adaptive selection based on data size and complexity

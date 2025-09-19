@@ -191,7 +191,7 @@ use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
     PatternLabeler, TripleBarrierLabeler, PatternWeighting, VolatilityWeighting,
     PatternAwareCrossValidator, PurgedCrossValidator, PredictionEngine, SampleWeightCalculator,
-    CombinatorialPurgedCV, OverfittingDetection, PBOResult,
+    PBOResult,
     phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
 };
 
@@ -314,18 +314,18 @@ impl UnifiedClassifier {
     }
 
     /// Train the unified model in the current mode
-    #[pyo3(signature = (X, y, learning_rate))]
+    #[pyo3(signature = (x, y, learning_rate))]
     fn train_unified(
         &mut self,
-        X: &Bound<'_, PyArray2<f32>>,
+        x: &Bound<'_, PyArray2<f32>>,
         y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
-        let X = X.readonly();
+        let x = x.readonly();
         let y = y.readonly();
-        let X_array = X.as_array();
+        let x_array = x.as_array();
         let y_array = y.as_array();
-        let (n_samples, n_features) = X_array.dim();
+        let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
             return Err(PyValueError::new_err(
@@ -343,46 +343,46 @@ impl UnifiedClassifier {
         }
 
         match self.mode {
-            ClassifierMode::Pattern => self.train_pattern_mode(&X_array, &y_array, learning_rate),
-            ClassifierMode::Trading => self.train_trading_mode(&X_array, &y_array, learning_rate),
-            ClassifierMode::Hybrid => self.train_hybrid_mode(&X_array, &y_array, learning_rate),
+            ClassifierMode::Pattern => self.train_pattern_mode(&x_array, &y_array, learning_rate),
+            ClassifierMode::Trading => self.train_trading_mode(&x_array, &y_array, learning_rate),
+            ClassifierMode::Hybrid => self.train_hybrid_mode(&x_array, &y_array, learning_rate),
         }
     }
 
     /// Switch to pattern mode and train
-    #[pyo3(signature = (X, y, learning_rate))]
+    #[pyo3(signature = (x, y, learning_rate))]
     fn train_pattern_mode_explicit(
         &mut self,
-        X: &Bound<'_, PyArray2<f32>>,
+        x: &Bound<'_, PyArray2<f32>>,
         y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Pattern;
-        self.train_unified(X, y, learning_rate)
+        self.train_unified(x, y, learning_rate)
     }
 
     /// Switch to trading mode and train
-    #[pyo3(signature = (X, y, learning_rate))]
+    #[pyo3(signature = (x, y, learning_rate))]
     fn train_trading_mode_explicit(
         &mut self,
-        X: &Bound<'_, PyArray2<f32>>,
+        x: &Bound<'_, PyArray2<f32>>,
         y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Trading;
-        self.train_unified(X, y, learning_rate)
+        self.train_unified(x, y, learning_rate)
     }
 
     /// Switch to hybrid mode and train
-    #[pyo3(signature = (X, y, learning_rate))]
+    #[pyo3(signature = (x, y, learning_rate))]
     fn train_hybrid_mode_explicit(
         &mut self,
-        X: &Bound<'_, PyArray2<f32>>,
+        x: &Bound<'_, PyArray2<f32>>,
         y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         self.mode = ClassifierMode::Hybrid;
-        self.train_unified(X, y, learning_rate)
+        self.train_unified(x, y, learning_rate)
     }
 
     /// Get feature importance for current mode
@@ -451,10 +451,18 @@ impl UnifiedClassifier {
         profit_threshold: f32,
         stop_threshold: f32,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        <Self as LabelGenerator>::create_pattern_labels(
-            self, py, open_prices, high_prices, low_prices, close_prices,
-            future_periods, profit_threshold, stop_threshold
-        )
+        let ohlc_data = crate::ml::traits::OHLCData {
+            open_prices,
+            high_prices,
+            low_prices,
+            close_prices,
+        };
+        let params = crate::ml::traits::PatternLabelingParams {
+            future_periods,
+            profit_threshold,
+            stop_threshold,
+        };
+        <Self as LabelGenerator>::create_pattern_labels(self, py, ohlc_data, params)
     }
 
     /// Create purged cross-validation splits
@@ -500,19 +508,19 @@ impl UnifiedClassifier {
     }
 
     /// Train with Phase 4 enhanced validation and overfitting detection
-    #[pyo3(signature = (X, y, learning_rate, use_combinatorial_cv=true))]
+    #[pyo3(signature = (x, y, learning_rate, use_combinatorial_cv=true))]
     fn train_with_overfitting_detection(
         &mut self,
-        X: &Bound<'_, PyArray2<f32>>,
+        x: &Bound<'_, PyArray2<f32>>,
         y: &Bound<'_, PyArray1<i32>>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        let X = X.readonly();
+        let x = x.readonly();
         let y = y.readonly();
-        let X_array = X.as_array();
+        let x_array = x.as_array();
         let y_array = y.as_array();
-        let (n_samples, n_features) = X_array.dim();
+        let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
             return Err(PyValueError::new_err(
@@ -536,12 +544,12 @@ impl UnifiedClassifier {
             // Define evaluation function based on current mode
             let evaluate_fn = |train_idx: &[usize], test_idx: &[usize], _combo_id: usize| -> PyResult<(f32, f32)> {
                 let result = match self.mode {
-                    ClassifierMode::Pattern => self.train_pattern_fold(&X_array, &y_array, train_idx, test_idx, learning_rate),
-                    ClassifierMode::Trading => self.train_trading_fold(&X_array, &y_array, train_idx, test_idx, learning_rate),
+                    ClassifierMode::Pattern => self.train_pattern_fold(&x_array, &y_array, train_idx, test_idx, learning_rate),
+                    ClassifierMode::Trading => self.train_trading_fold(&x_array, &y_array, train_idx, test_idx, learning_rate),
                     ClassifierMode::Hybrid => {
                         // For hybrid mode, average both approaches
-                        let pattern_result = self.train_pattern_fold(&X_array, &y_array, train_idx, test_idx, learning_rate);
-                        let trading_result = self.train_trading_fold(&X_array, &y_array, train_idx, test_idx, learning_rate);
+                        let pattern_result = self.train_pattern_fold(&x_array, &y_array, train_idx, test_idx, learning_rate);
+                        let trading_result = self.train_trading_fold(&x_array, &y_array, train_idx, test_idx, learning_rate);
                         match (pattern_result, trading_result) {
                             (Ok((p_score, _)), Ok((t_score, _))) => Ok(((p_score + t_score) / 2.0, vec![0.0; self.n_features])),
                             (Ok(result), _) | (_, Ok(result)) => Ok(result),
@@ -572,14 +580,14 @@ impl UnifiedClassifier {
                     // Train final models based on mode
                     match self.mode {
                         ClassifierMode::Pattern => {
-                            self.pattern_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
+                            self.pattern_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
                         },
                         ClassifierMode::Trading => {
-                            self.trading_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
+                            self.trading_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
                         },
                         ClassifierMode::Hybrid => {
-                            self.pattern_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
-                            self.trading_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
+                            self.pattern_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
+                            self.trading_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
                             for i in 0..self.n_features {
                                 self.hybrid_weights[i] = (self.pattern_weights[i] + self.trading_weights[i]) / 2.0;
                             }
@@ -615,14 +623,14 @@ impl UnifiedClassifier {
         
         // Fallback to traditional training based on mode
         match self.mode {
-            ClassifierMode::Pattern => self.train_pattern_mode(&X_array, &y_array, learning_rate),
-            ClassifierMode::Trading => self.train_trading_mode(&X_array, &y_array, learning_rate),
-            ClassifierMode::Hybrid => self.train_hybrid_mode(&X_array, &y_array, learning_rate),
+            ClassifierMode::Pattern => self.train_pattern_mode(&x_array, &y_array, learning_rate),
+            ClassifierMode::Trading => self.train_trading_mode(&x_array, &y_array, learning_rate),
+            ClassifierMode::Hybrid => self.train_hybrid_mode(&x_array, &y_array, learning_rate),
         }
     }
 
     /// Get comprehensive overfitting analysis results
-    fn get_overfitting_analysis(&self, py: Python) -> PyResult<Option<HashMap<String, f32>>> {
+    fn get_overfitting_analysis(&self, _py: Python) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
@@ -663,11 +671,11 @@ impl UnifiedClassifier {
     /// Train in pattern recognition mode
     fn train_pattern_mode(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
-        let (n_samples, _) = X.dim();
+        let (n_samples, _) = x.dim();
 
         // Create pattern-aware cross-validation splits
         self.cv_splits = self.pattern_cv.create_pattern_aware_cv_splits(
@@ -680,7 +688,7 @@ impl UnifiedClassifier {
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
             let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                X, y, train_idx, test_idx, learning_rate
+                x, y, train_idx, test_idx, learning_rate
             )?;
 
             cv_scores.push(fold_score);
@@ -697,7 +705,7 @@ impl UnifiedClassifier {
         }
 
         // Train final pattern model
-        self.pattern_weights = self.train_final_model(X, y, learning_rate)?;
+        self.pattern_weights = self.train_final_model(x, y, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -716,11 +724,11 @@ impl UnifiedClassifier {
     /// Train in trading classification mode
     fn train_trading_mode(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
-        let (n_samples, _) = X.dim();
+        let (n_samples, _) = x.dim();
 
         // Create purged cross-validation splits
         self.cv_splits = self.purged_cv.create_purged_cv_splits(
@@ -733,7 +741,7 @@ impl UnifiedClassifier {
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
             let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                X, y, train_idx, test_idx, learning_rate
+                x, y, train_idx, test_idx, learning_rate
             )?;
 
             cv_scores.push(fold_score);
@@ -750,7 +758,7 @@ impl UnifiedClassifier {
         }
 
         // Train final trading model
-        self.trading_weights = self.train_final_model(X, y, learning_rate)?;
+        self.trading_weights = self.train_final_model(x, y, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -769,13 +777,13 @@ impl UnifiedClassifier {
     /// Train in hybrid mode
     fn train_hybrid_mode(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
         // Train both pattern and trading components
-        let pattern_results = self.train_pattern_mode(X, y, learning_rate)?;
-        let trading_results = self.train_trading_mode(X, y, learning_rate)?;
+        let pattern_results = self.train_pattern_mode(x, y, learning_rate)?;
+        let trading_results = self.train_trading_mode(x, y, learning_rate)?;
 
         // Combine weights (simple average for now)
         for i in 0..self.n_features {
@@ -798,7 +806,7 @@ impl UnifiedClassifier {
     /// Train a pattern recognition fold
     fn train_pattern_fold(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         _train_idx: &[usize],
         test_idx: &[usize],
@@ -810,7 +818,7 @@ impl UnifiedClassifier {
 
         // Test performance using pattern-based prediction
         for &idx in test_idx {
-            let features: Vec<f32> = X.row(idx).to_vec();
+            let features: Vec<f32> = x.row(idx).to_vec();
             let (pred_class, confidence) = self.predict_pattern_sample(&features)?;
 
             if confidence > 0.4 {
@@ -828,7 +836,7 @@ impl UnifiedClassifier {
     /// Train a trading classification fold
     fn train_trading_fold(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         _train_idx: &[usize],
         test_idx: &[usize],
@@ -840,7 +848,7 @@ impl UnifiedClassifier {
 
         // Test performance using trading-based prediction
         for &idx in test_idx {
-            let features: Vec<f32> = X.row(idx).to_vec();
+            let features: Vec<f32> = x.row(idx).to_vec();
             let (pred_class, confidence) = self.predict_trading_sample(&features)?;
 
             if confidence > 0.3 {
@@ -933,11 +941,11 @@ impl UnifiedClassifier {
     /// Train final model using gradient descent
     fn train_final_model(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
     ) -> PyResult<Vec<f32>> {
-        let (n_samples, n_features) = X.dim();
+        let (n_samples, n_features) = x.dim();
         let mut weights = vec![0.01; n_features];
 
         let epochs = 100;
@@ -946,7 +954,7 @@ impl UnifiedClassifier {
             let mut gradient = vec![0.0; n_features];
 
             for i in 0..n_samples {
-                let features: Vec<f32> = X.row(i).to_vec();
+                let features: Vec<f32> = x.row(i).to_vec();
                 let prediction = features.iter()
                     .zip(&weights)
                     .map(|(f, w)| f * w)
@@ -980,12 +988,12 @@ impl UnifiedClassifier {
     /// Train pattern mode with Phase 4 validation
     fn train_pattern_mode_with_phase4(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        let (n_samples, _) = X.dim();
+        let (n_samples, _) = x.dim();
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
@@ -998,7 +1006,7 @@ impl UnifiedClassifier {
             
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
                 let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                    X, y, train_idx, test_idx, learning_rate
+                    x, y, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -1037,7 +1045,7 @@ impl UnifiedClassifier {
 
             for (train_idx, test_idx) in &self.cv_splits {
                 let (fold_score, fold_feature_importance) = self.train_pattern_fold(
-                    X, y, train_idx, test_idx, learning_rate
+                    x, y, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -1052,7 +1060,7 @@ impl UnifiedClassifier {
             }
         }
 
-        self.pattern_weights = self.train_final_model(X, y, learning_rate)?;
+        self.pattern_weights = self.train_final_model(x, y, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -1071,12 +1079,12 @@ impl UnifiedClassifier {
     /// Train trading mode with Phase 4 validation
     fn train_trading_mode_with_phase4(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        let (n_samples, _) = X.dim();
+        let (n_samples, _) = x.dim();
         let mut cv_scores = Vec::new();
         let mut feature_scores = vec![0.0; self.n_features];
 
@@ -1089,7 +1097,7 @@ impl UnifiedClassifier {
             
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
                 let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                    X, y, train_idx, test_idx, learning_rate
+                    x, y, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -1128,7 +1136,7 @@ impl UnifiedClassifier {
 
             for (train_idx, test_idx) in &self.cv_splits {
                 let (fold_score, fold_feature_importance) = self.train_trading_fold(
-                    X, y, train_idx, test_idx, learning_rate
+                    x, y, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -1143,7 +1151,7 @@ impl UnifiedClassifier {
             }
         }
 
-        self.trading_weights = self.train_final_model(X, y, learning_rate)?;
+        self.trading_weights = self.train_final_model(x, y, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -1162,14 +1170,14 @@ impl UnifiedClassifier {
     /// Train hybrid mode with Phase 4 validation
     fn train_hybrid_mode_with_phase4(
         &mut self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
         // Train both pattern and trading components with Phase 4
-        let pattern_results = self.train_pattern_mode_with_phase4(X, y, learning_rate, use_combinatorial_cv)?;
-        let trading_results = self.train_trading_mode_with_phase4(X, y, learning_rate, use_combinatorial_cv)?;
+        let pattern_results = self.train_pattern_mode_with_phase4(x, y, learning_rate, use_combinatorial_cv)?;
+        let trading_results = self.train_trading_mode_with_phase4(x, y, learning_rate, use_combinatorial_cv)?;
 
         // Combine weights (simple average for now)
         for i in 0..self.n_features {
@@ -1273,18 +1281,10 @@ impl LabelGenerator for UnifiedClassifier {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: usize,
-        profit_threshold: f32,
-        stop_threshold: f32,
+        ohlc_data: crate::ml::traits::OHLCData<'py>,
+        params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(
-            py, open_prices, high_prices, low_prices, close_prices,
-            future_periods, profit_threshold, stop_threshold
-        )
+        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(

@@ -169,11 +169,28 @@ impl CpuBackend {
     }
 }
 
+impl Default for CpuBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IndicatorsBackend for CpuBackend {
     cpu_method!(rsi, rsi_cpu, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(ema, ema_cpu, (prices: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(sma, sma_cpu, (values: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
-    cpu_method!(bollinger_bands, bollinger_bands_cpu, (prices: PyReadonlyArray1<'py, f64>, period: usize, std_dev: f64) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)>);
+    fn bollinger_bands<'py>(
+        &self,
+        py: Python<'py>,
+        prices: PyReadonlyArray1<'py, f64>,
+        period: usize,
+        std_dev: f64,
+    ) -> PyResult<crate::indicators::api::BollingerBandsOutput> {
+        let result = crate::backends::cpu::implementations::bollinger_bands_cpu(
+            py, prices, period, std_dev,
+        )?;
+        Ok(result)
+    }
     cpu_method!(atr, atr_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(williams_r, williams_r_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
     cpu_method!(cci, cci_cpu, (high: PyReadonlyArray1<'py, f64>, low: PyReadonlyArray1<'py, f64>, close: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
@@ -223,5 +240,15 @@ impl IndicatorsBackend for CpuBackend {
     }
 
     cpu_method!(supersmoother, supersmoother_cpu, (data: PyReadonlyArray1<'py, f64>, period: usize) -> PyResult<Py<PyArray1<f64>>>);
-    cpu_method!(hilbert_transform, hilbert_transform_cpu, (data: PyReadonlyArray1<'py, f64>, lp_period: usize) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)>);
+    fn hilbert_transform<'py>(
+        &self,
+        py: Python<'py>,
+        data: PyReadonlyArray1<'py, f64>,
+        lp_period: usize,
+    ) -> PyResult<crate::indicators::api::HilbertTransformOutput> {
+        let result = crate::backends::cpu::implementations::hilbert_transform_cpu(
+            py, data, lp_period,
+        )?;
+        Ok(result)
+    }
 }

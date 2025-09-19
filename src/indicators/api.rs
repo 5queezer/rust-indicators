@@ -4,6 +4,24 @@ use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::prelude::*;
 
 #[pyclass]
+pub struct BollingerBandsOutput {
+    #[pyo3(get)]
+    pub upper: Py<PyArray1<f64>>,
+    #[pyo3(get)]
+    pub middle: Py<PyArray1<f64>>,
+    #[pyo3(get)]
+    pub lower: Py<PyArray1<f64>>,
+}
+
+#[pyclass]
+pub struct HilbertTransformOutput {
+    #[pyo3(get)]
+    pub real: Py<PyArray1<f64>>,
+    #[pyo3(get)]
+    pub imag: Py<PyArray1<f64>>,
+}
+
+#[pyclass]
 pub struct RustTA {
     backend: Box<dyn IndicatorsBackend>,
     device: &'static str,
@@ -65,8 +83,9 @@ impl RustTA {
         prices: PyReadonlyArray1<f64>,
         period: usize,
         std_dev: f64,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-        self.backend.bollinger_bands(py, prices, period, std_dev)
+    ) -> PyResult<BollingerBandsOutput> {
+        let result = self.backend.bollinger_bands(py, prices, period, std_dev)?;
+        Ok(result)
     }
 
     /// Average True Range
@@ -144,7 +163,8 @@ impl RustTA {
         py: Python,
         data: PyReadonlyArray1<f64>,
         lp_period: usize,
-    ) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-        self.backend.hilbert_transform(py, data, lp_period)
+    ) -> PyResult<HilbertTransformOutput> {
+        let result = self.backend.hilbert_transform(py, data, lp_period)?;
+        Ok(result)
     }
 }

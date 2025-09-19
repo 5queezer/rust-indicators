@@ -67,9 +67,11 @@ impl TripleBarrierLabeler {
     pub fn default() -> Self {
         Self::new(2.0, 1.5, 20)
     }
+}
 
+impl TripleBarrierLabeler {
     /// Set trading side for side-aware labeling
-    pub fn with_side(mut self, side: TradingSide) -> Self {
+    fn with_side(mut self, side: TradingSide) -> Self {
         self.trading_side = Some(side);
         self
     }
@@ -86,9 +88,7 @@ impl TripleBarrierLabeler {
     ) -> BarrierResult {
         let end_idx = (start_idx + max_hold).min(prices.len() - 1);
         
-        for i in (start_idx + 1)..=end_idx {
-            let price = prices[i];
-            
+        for (i, &price) in prices.iter().enumerate().take(end_idx + 1).skip(start_idx + 1) {
             // Check barriers in chronological order
             if price >= upper_barrier {
                 return BarrierResult {
@@ -225,6 +225,12 @@ impl TripleBarrierLabeler {
     }
 }
 
+impl Default for TripleBarrierLabeler {
+    fn default() -> Self {
+        Self::default()
+    }
+}
+
 impl LabelGenerator for TripleBarrierLabeler {
     fn create_triple_barrier_labels<'py>(
         &self,
@@ -241,13 +247,8 @@ impl LabelGenerator for TripleBarrierLabeler {
     fn create_pattern_labels<'py>(
         &self,
         _py: Python<'py>,
-        _open_prices: PyReadonlyArray1<'py, f32>,
-        _high_prices: PyReadonlyArray1<'py, f32>,
-        _low_prices: PyReadonlyArray1<'py, f32>,
-        _close_prices: PyReadonlyArray1<'py, f32>,
-        _future_periods: usize,
-        _profit_threshold: f32,
-        _stop_threshold: f32,
+        _ohlc_data: crate::ml::traits::OHLCData<'py>,
+        _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
         Err(PyValueError::new_err("TripleBarrierLabeler does not implement pattern labels"))
     }
@@ -290,27 +291,26 @@ impl PatternLabeler {
     pub fn default() -> Self {
         Self::new(10, 0.02, 0.02)
     }
+}
 
+impl Default for PatternLabeler {
+    fn default() -> Self {
+        Self::default()
+    }
+}
+
+impl PatternLabeler {
     /// Generate pattern-based labels
-    pub fn generate_pattern_labels<'py>(
+    fn generate_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: Option<usize>,
-        profit_threshold: Option<f32>,
-        stop_threshold: Option<f32>,
+        ohlc_data: crate::ml::traits::OHLCData<'py>,
+        params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        let open_array = open_prices.as_array();
-        let high_array = high_prices.as_array();
-        let low_array = low_prices.as_array();
-        let close_array = close_prices.as_array();
-        let opens = extract_safe!(open_array, "open_prices");
-        let highs = extract_safe!(high_array, "high_prices");
-        let lows = extract_safe!(low_array, "low_prices");
-        let closes = extract_safe!(close_array, "close_prices");
+        let opens = ohlc_data.open_prices.as_array();
+        let highs = ohlc_data.high_prices.as_array();
+        let lows = ohlc_data.low_prices.as_array();
+        let closes = ohlc_data.close_prices.as_array();
 
         let n = opens.len();
         if highs.len() != n || lows.len() != n || closes.len() != n {
@@ -318,9 +318,9 @@ impl PatternLabeler {
         }
 
         let mut labels = vec![1i32; n];
-        let future_periods = future_periods.unwrap_or(self.default_future_periods);
-        let profit_threshold = profit_threshold.unwrap_or(self.default_profit_threshold);
-        let stop_threshold = stop_threshold.unwrap_or(self.default_stop_threshold);
+        let future_periods = params.future_periods;
+        let profit_threshold = params.profit_threshold;
+        let stop_threshold = params.stop_threshold;
 
         for i in 0..(n.saturating_sub(future_periods)) {
             let entry_price = closes[i];
@@ -371,24 +371,10 @@ impl LabelGenerator for PatternLabeler {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: usize,
-        profit_threshold: f32,
-        stop_threshold: f32,
+        ohlc_data: crate::ml::traits::OHLCData<'py>,
+        params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.generate_pattern_labels(
-            py,
-            open_prices,
-            high_prices,
-            low_prices,
-            close_prices,
-            Some(future_periods),
-            Some(profit_threshold),
-            Some(stop_threshold),
-        )
+        self.generate_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(
@@ -428,6 +414,12 @@ impl ComponentLabelGenerator {
     }
 }
 
+impl Default for ComponentLabelGenerator {
+    fn default() -> Self {
+        Self::default()
+    }
+}
+
 impl LabelGenerator for ComponentLabelGenerator {
     fn create_triple_barrier_labels<'py>(
         &self,
@@ -446,18 +438,10 @@ impl LabelGenerator for ComponentLabelGenerator {
     fn create_pattern_labels<'py>(
         &self,
         py: Python<'py>,
-        open_prices: PyReadonlyArray1<'py, f32>,
-        high_prices: PyReadonlyArray1<'py, f32>,
-        low_prices: PyReadonlyArray1<'py, f32>,
-        close_prices: PyReadonlyArray1<'py, f32>,
-        future_periods: usize,
-        profit_threshold: f32,
-        stop_threshold: f32,
+        ohlc_data: crate::ml::traits::OHLCData<'py>,
+        params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
-        self.pattern_labeler.create_pattern_labels(
-            py, open_prices, high_prices, low_prices, close_prices,
-            future_periods, profit_threshold, stop_threshold
-        )
+        self.pattern_labeler.create_pattern_labels(py, ohlc_data, params)
     }
 
     fn calculate_sample_weights<'py>(

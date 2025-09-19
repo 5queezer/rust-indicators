@@ -213,9 +213,9 @@ pub fn hilbert_transform_gpu_compute<R: Runtime>(
     // Create GPU arrays
     let input_gpu = client.create(f32::as_bytes(&data_f32));
     let temp_gpu = client.empty(len * core::mem::size_of::<f32>());
-    let real_gpu = client.empty(len * core::mem::size_of::<f32>());
-    let imaginary_gpu = client.empty(len * core::mem::size_of::<f32>());
-    let peaks_gpu = client.empty(len * core::mem::size_of::<f32>());
+    let _real_gpu = client.empty(len * core::mem::size_of::<f32>());
+    let _imaginary_gpu = client.empty(len * core::mem::size_of::<f32>());
+    let _peaks_gpu = client.empty(len * core::mem::size_of::<f32>());
 
     // Step 1: Apply roofing high-pass filter (48-period)
     let hp_period = 48.0f32;

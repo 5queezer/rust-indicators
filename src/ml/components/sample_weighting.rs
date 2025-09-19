@@ -342,7 +342,16 @@ impl VolatilityWeighting {
     pub fn default() -> Self {
         Self::new(20, 0.1, 3.0)
     }
+}
 
+impl Default for VolatilityWeighting {
+    fn default() -> Self {
+        Self::default()
+    }
+
+}
+
+impl VolatilityWeighting {
     /// Calculate volatility-based sample weights
     ///
     /// # Parameters
@@ -419,7 +428,16 @@ impl PatternWeighting {
     pub fn default() -> Self {
         Self::new(0.02, 0.5, 2.0)
     }
+}
 
+impl Default for PatternWeighting {
+    fn default() -> Self {
+        Self::default()
+    }
+
+}
+
+impl PatternWeighting {
     /// Calculate pattern-based sample weights
     ///
     /// # Parameters
@@ -459,10 +477,10 @@ impl PatternWeighting {
             let vol_weight = (vols[i] / self.volatility_target).clamp(self.min_weight, self.max_weight);
 
             // Weight by pattern rarity and market volatility
-            let rarity_weight = if pattern_count > 0.0 { 
-                1.0 / pattern_count.sqrt() 
-            } else { 
-                1.0 
+            let rarity_weight = if pattern_count > 0.0 {
+                1.0 / pattern_count.sqrt()
+            } else {
+                1.0
             };
             
             weights[i] = rarity_weight * vol_weight;
@@ -569,13 +587,8 @@ impl crate::ml::traits::LabelGenerator for SampleWeightCalculator {
     fn create_pattern_labels<'py>(
         &self,
         _py: Python<'py>,
-        _open_prices: PyReadonlyArray1<'py, f32>,
-        _high_prices: PyReadonlyArray1<'py, f32>,
-        _low_prices: PyReadonlyArray1<'py, f32>,
-        _close_prices: PyReadonlyArray1<'py, f32>,
-        _future_periods: usize,
-        _profit_threshold: f32,
-        _stop_threshold: f32,
+        _ohlc_data: crate::ml::traits::OHLCData<'py>,
+        _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
         Err(PyValueError::new_err("SampleWeightCalculator does not implement label generation"))
     }

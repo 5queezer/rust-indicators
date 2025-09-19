@@ -136,6 +136,7 @@ impl Phase4ConfigBuilder {
             parallel_processing: true,
         }
     }
+
     
     pub fn embargo_pct(mut self, embargo_pct: f32) -> Self {
         self.embargo_pct = embargo_pct;
@@ -478,6 +479,7 @@ impl Phase4Workflow {
 /// Memory tracking utility
 #[derive(Clone)]
 struct MemoryTracker {
+    #[allow(dead_code)]
     optimization_level: u8,
     start_memory: usize,
     peak_memory: usize,

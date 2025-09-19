@@ -68,7 +68,7 @@ impl RustFeatures {
             return Ok(PyArray1::from_vec(py, result).to_owned().into());
         }
 
-        for i in 0..len {
+        for (i, item) in result.iter_mut().enumerate().take(len) {
             if i + 1 >= window {
                 let start_idx = i + 1 - window;
                 let window_data: Vec<f64> = (start_idx..=i)
@@ -82,7 +82,7 @@ impl RustFeatures {
                     let variance: f64 =
                         window_data.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / denom;
 
-                    result[i] = variance.sqrt();
+                    *item = variance.sqrt();
                 }
             }
         }

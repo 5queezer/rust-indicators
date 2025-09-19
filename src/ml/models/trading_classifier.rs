@@ -322,7 +322,7 @@ use crate::extract_safe;
 use crate::ml::traits::{MLBackend, LabelGenerator, CrossValidator, Predictor};
 use crate::ml::components::{
     TripleBarrierLabeler, VolatilityWeighting, PurgedCrossValidator, PredictionEngine,
-    SampleWeightCalculator, CombinatorialPurgedCV, OverfittingDetection, PBOResult,
+    SampleWeightCalculator, PBOResult,
     phase4_integration::{Phase4Config, Phase4Capable, Phase4Workflow, Phase4Results},
 };
 
@@ -384,16 +384,16 @@ impl TradingClassifier {
     }
 
     /// Train the scientific trading model
-    #[pyo3(signature = (X, y, learning_rate))]
+    #[pyo3(signature = (x, y, learning_rate))]
     fn train_scientific(
         &mut self,
-        X: PyReadonlyArray2<f32>,
+        x: PyReadonlyArray2<f32>,
         y: PyReadonlyArray1<i32>,
         learning_rate: f32,
     ) -> PyResult<HashMap<String, f32>> {
-        let X_array = X.as_array();
+        let x_array = x.as_array();
         let y_array = y.as_array();
-        let (n_samples, n_features) = X_array.dim();
+        let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
             return Err(PyValueError::new_err(
@@ -419,7 +419,7 @@ impl TradingClassifier {
         // Cross-validation training
         for (train_idx, test_idx) in &self.cv_splits {
             let (fold_score, fold_feature_importance) = self.train_fold(
-                &X_array, &y_array, train_idx, test_idx, learning_rate
+                &x_array, &y_array, train_idx, test_idx, learning_rate
             )?;
 
             cv_scores.push(fold_score);
@@ -436,7 +436,7 @@ impl TradingClassifier {
         }
 
         // Train final model
-        self.model_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
+        self.model_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -518,7 +518,7 @@ impl TradingClassifier {
     }
 
     /// Make prediction with confidence score
-    fn predict_with_confidence(&self, py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
+    fn predict_with_confidence(&self, _py: Python, features: PyReadonlyArray1<f32>) -> PyResult<(i32, f32)> {
         if !self.trained {
             return Err(PyValueError::new_err("Model not trained"));
         }
@@ -559,17 +559,17 @@ impl TradingClassifier {
     }
 
     /// Train with Phase 4 enhanced validation and overfitting detection
-    #[pyo3(signature = (X, y, learning_rate, use_combinatorial_cv=true))]
+    #[pyo3(signature = (x, y, learning_rate, use_combinatorial_cv=true))]
     fn train_with_overfitting_detection(
         &mut self,
-        X: PyReadonlyArray2<f32>,
+        x: PyReadonlyArray2<f32>,
         y: PyReadonlyArray1<i32>,
         learning_rate: f32,
         use_combinatorial_cv: bool,
     ) -> PyResult<HashMap<String, f32>> {
-        let X_array = X.as_array();
+        let x_array = x.as_array();
         let y_array = y.as_array();
-        let (n_samples, n_features) = X_array.dim();
+        let (n_samples, n_features) = x_array.dim();
 
         if n_features != self.n_features {
             return Err(PyValueError::new_err(
@@ -600,7 +600,7 @@ impl TradingClassifier {
             // Evaluate on combinatorial splits
             for (train_idx, test_idx, _combo_id) in &combinatorial_splits {
                 let (fold_score, fold_feature_importance) = self.train_fold_with_indices(
-                    &X_array, &y_array, train_idx, test_idx, learning_rate
+                    &x_array, &y_array, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -641,7 +641,7 @@ impl TradingClassifier {
 
             for (train_idx, test_idx) in &self.cv_splits {
                 let (fold_score, fold_feature_importance) = self.train_fold(
-                    &X_array, &y_array, train_idx, test_idx, learning_rate
+                    &x_array, &y_array, train_idx, test_idx, learning_rate
                 )?;
 
                 cv_scores.push(fold_score);
@@ -659,7 +659,7 @@ impl TradingClassifier {
         }
 
         // Train final model
-        self.model_weights = self.train_final_model(&X_array, &y_array, learning_rate)?;
+        self.model_weights = self.train_final_model(&x_array, &y_array, learning_rate)?;
         self.trained = true;
 
         let mean_score = cv_scores.iter().sum::<f32>() / cv_scores.len() as f32;
@@ -682,7 +682,7 @@ impl TradingClassifier {
     }
 
     /// Get comprehensive overfitting analysis results
-    fn get_overfitting_analysis(&self, py: Python) -> PyResult<Option<HashMap<String, f32>>> {
+    fn get_overfitting_analysis(&self, _py: Python) -> PyResult<Option<HashMap<String, f32>>> {
         if let Some(pbo_result) = &self.pbo_result {
             let mut analysis = HashMap::new();
             analysis.insert("pbo_value".to_string(), pbo_result.pbo_value as f32);
@@ -723,7 +723,7 @@ impl TradingClassifier {
     /// Train a single cross-validation fold
     fn train_fold(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         _train_idx: &[usize],
         test_idx: &[usize],
@@ -735,7 +735,7 @@ impl TradingClassifier {
 
         // Test performance using simple prediction
         for &idx in test_idx {
-            let features: Vec<f32> = X.row(idx).to_vec();
+            let features: Vec<f32> = x.row(idx).to_vec();
             let (pred_class, confidence) = self.predict_sample(&features)?;
 
             if confidence > 0.3 {
@@ -753,14 +753,14 @@ impl TradingClassifier {
     /// Train a single cross-validation fold with explicit indices (for CombinatorialPurgedCV)
     fn train_fold_with_indices(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         _train_idx: &[usize],
         test_idx: &[usize],
         _lr: f32,
     ) -> PyResult<(f32, Vec<f32>)> {
         // Same implementation as train_fold but more explicit about indices
-        self.train_fold(X, y, _train_idx, test_idx, _lr)
+        self.train_fold(x, y, _train_idx, test_idx, _lr)
     }
 
     /// Make prediction for a single sample
@@ -791,11 +791,11 @@ impl TradingClassifier {
     /// Train final model using gradient descent
     fn train_final_model(
         &self,
-        X: &ndarray::ArrayView2<f32>,
+        x: &ndarray::ArrayView2<f32>,
         y: &ndarray::ArrayView1<i32>,
         learning_rate: f32,
     ) -> PyResult<Vec<f32>> {
-        let (n_samples, n_features) = X.dim();
+        let (n_samples, n_features) = x.dim();
         let mut weights = vec![0.01; n_features]; // Small random initialization
 
         // Simple gradient descent for logistic regression
@@ -805,7 +805,7 @@ impl TradingClassifier {
             let mut gradient = vec![0.0; n_features];
 
             for i in 0..n_samples {
-                let features: Vec<f32> = X.row(i).to_vec();
+                let features: Vec<f32> = x.row(i).to_vec();
                 let prediction = features.iter()
                     .zip(&weights)
                     .map(|(f, w)| f * w)
@@ -841,7 +841,7 @@ impl TradingClassifier {
 impl MLBackend for TradingClassifier {
     fn train_model<'py>(
         &mut self,
-        py: Python<'py>,
+        _py: Python<'py>,
         features: PyReadonlyArray2<'py, f32>,
         labels: PyReadonlyArray1<'py, i32>,
     ) -> PyResult<HashMap<String, f32>> {
@@ -907,13 +907,8 @@ impl LabelGenerator for TradingClassifier {
     fn create_pattern_labels<'py>(
         &self,
         _py: Python<'py>,
-        _open_prices: PyReadonlyArray1<'py, f32>,
-        _high_prices: PyReadonlyArray1<'py, f32>,
-        _low_prices: PyReadonlyArray1<'py, f32>,
-        _close_prices: PyReadonlyArray1<'py, f32>,
-        _future_periods: usize,
-        _profit_threshold: f32,
-        _stop_threshold: f32,
+        _ohlc_data: crate::ml::traits::OHLCData<'py>,
+        _params: crate::ml::traits::PatternLabelingParams,
     ) -> PyResult<Py<PyArray1<i32>>> {
         Err(PyValueError::new_err("TradingClassifier uses triple barrier labels"))
     }

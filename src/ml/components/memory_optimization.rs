@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use crate::ml::components::cross_validation::CVSplitsOutput;
 use numpy::ndarray;
 
 /// Memory pool for reusing frequently allocated objects
@@ -238,7 +239,7 @@ impl FeatureProcessor {
 
 /// Memory-efficient cross-validation utilities
 pub struct CVMemoryManager {
-    split_cache: ComputationCache<(usize, usize, u32), Vec<(Vec<usize>, Vec<usize>)>>,
+    split_cache: ComputationCache<(usize, usize, u32), CVSplitsOutput>,
     score_buffer: Vec<f32>,
 }
 
@@ -346,9 +347,8 @@ impl MemoryStats {
     }
 }
 
-/// Thread-safe global memory optimizer instance
 lazy_static::lazy_static! {
-    static ref GLOBAL_MEMORY_OPTIMIZER: Arc<Mutex<MemoryOptimizer>> = 
+    static ref GLOBAL_MEMORY_OPTIMIZER: Arc<Mutex<MemoryOptimizer>> =
         Arc::new(Mutex::new(MemoryOptimizer::new()));
 }
 
